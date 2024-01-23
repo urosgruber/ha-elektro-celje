@@ -1,3 +1,23 @@
+<!--
+{% if installed %}
+## Elektro Celje Obvestila o izklopih
+{% else %}
+# Elektro Celje Obvestila o izklopih
+{% endif %}
+
+![Project Maintenance][maintenance-shield]
+
+{% if installed %}
+![Project Maintenance][maintenance-shield]
+{% endif %}
+
+{% if version %}
+**Version: 1.0.0**
+{% endif %}
+-->
+
+**This is a custom integration for Home Assistant.**
+
 # Elektro Celje Power Outage Notification Integration for Home Assistant
 
 ## Overview
