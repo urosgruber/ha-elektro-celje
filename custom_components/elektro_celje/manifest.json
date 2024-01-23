@@ -1,0 +1,21 @@
+{
+  "domain": "elektro_celje",
+  "name": "Elektro Celje Obvestila o izklopih",
+  "documentation": "https://your-documentation-url.com",
+  "dependencies": [],
+  "codeowners": [],
+  "requirements": ["feedparser", "beautifulsoup4"],
+  "version": "1.0.0",
+  "state_class": "measurement",
+  "integration": "Elektro Celje notification",
+  "is_release": false,
+  "is_available": true,
+  "quality_scale": "internal",
+  "integration_type": "entity",
+  "iot_class": "cloud_polling",
+  "translations": [],
+  "images": [],
+  "icons": {
+      "sensor": "mdi:transmission-tower"
+  }
+}
