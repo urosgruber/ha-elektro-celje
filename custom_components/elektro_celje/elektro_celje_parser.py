@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from html import unescape
 from bs4 import BeautifulSoup
+from datetime import datetime
 import feedparser
 
 _LOGGER = logging.getLogger(__name__)
@@ -15,6 +16,8 @@ class ElektroCeljeData:
     success: bool
     published_date: str
     working_date: str
+    start_date: datetime
+    end_date: datetime
     description: str
 
 class ElektroCeljeParser:
@@ -55,15 +58,18 @@ class ElektroCeljeParser:
                     # Prefix the variable with the specified text
                     working_date = f"Izpad elektrike {dates_list_text}" if dates_list_text else None
 
+                    # Extract start and end dates from the working_date
+                    start_date, end_date = self.extract_dates(working_date)
+
                     # Return encapsulated data as an object
                     return ElektroCeljeData(
                         success=True,
                         published_date=published_date,
                         working_date=working_date,
+                        start_date=start_date,
+                        end_date=end_date,
                         description=decoded_description
                     )
-                    #Return all processed variables
-                    return True, published_date, izpad_text, decoded_description
 
             # Station not found in any items, indicating no problem
             _LOGGER.info(f"Search parameter '{search_station}' not found in RSS feed.")
@@ -71,6 +77,8 @@ class ElektroCeljeParser:
                 success=False,
                 published_date="",
                 working_date="",
+                start_date=None,
+                end_date=None,
                 description=""
             )
 
@@ -80,6 +88,8 @@ class ElektroCeljeParser:
                 success=False,
                 published_date="",
                 working_date="",
+                start_date=None,
+                end_date=None,
                 description=""
             )
 
@@ -102,6 +112,58 @@ class ElektroCeljeParser:
                 return li_tag.get_text(strip=True)
 
         return None
+
+    def extract_dates(working_date: str):
+        import re
+        from datetime import datetime
+
+        # Regex to extract the date and time
+        date_regex = re.compile(r"(\d{1,2}\. \w+ \d{4})")
+        time_regex = re.compile(r"(\d{2}:\d{2})")
+
+        # Slovenian month replacements
+        slovenian_months = {
+            "januarja": "january",
+            "februarja": "february",
+            "marca": "march",
+            "aprila": "april",
+            "maja": "may",
+            "junija": "june",
+            "julija": "july",
+            "avgusta": "august",
+            "septembra": "september",
+            "oktobra": "october",
+            "novembra": "november",
+            "decembra": "december"
+        }
+
+        # Function to replace Slovenian month with English equivalent
+        def replace_slovenian_months(date_str):
+            for slo_month, eng_month in slovenian_months.items():
+                if slo_month in date_str:
+                    return date_str.replace(slo_month, eng_month)
+            return date_str
+
+        # Extract date and time
+        date_match = date_regex.search(description)
+        time_matches = time_regex.findall(description)
+
+        # Parse the date
+        if date_match:
+            extracted_date = date_match.group(0)
+            extracted_date = replace_slovenian_months(extracted_date)
+            extracted_date = datetime.strptime(extracted_date, "%d. %B %Y").strftime("%Y-%m-%d")
+
+        # Parse the times
+        if time_matches:
+            start_time = time_matches[0]
+            end_time = time_matches[1]
+
+        # Convert the start and end times
+        start_datetime = datetime.combine(extracted_date, datetime.strptime(start_time, "%H:%M").time())
+        end_datetime = datetime.combine(extracted_date, datetime.strptime(end_time, "%H:%M").time())
+
+        return start_datetime, end_datetime
 
 # Create an instance of ElektroCeljeParser with a region
 #elektro_celje_parser = ElektroCeljeParser("default")
