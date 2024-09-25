@@ -153,7 +153,7 @@ class ElektroCeljeParser:
         if date_match:
             extracted_date = date_match.group(0)
             extracted_date = replace_slovenian_months(extracted_date)
-            extracted_date = datetime.strptime(extracted_date, "%d. %B %Y").strftime("%Y-%m-%d")
+            extracted_date = datetime.strptime(extracted_date, "%d. %B %Y")
 
         # Parse the times
         if time_matches:
