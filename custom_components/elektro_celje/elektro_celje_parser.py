@@ -59,7 +59,7 @@ class ElektroCeljeParser:
                     working_date = f"Izpad elektrike {dates_list_text}" if dates_list_text else None
 
                     # Extract start and end dates from the working_date
-                    start_date, end_date = self.extract_dates(working_date)
+                    start_date, end_date = self.extract_dates(dates_list_text)
 
                     # Return encapsulated data as an object
                     return ElektroCeljeData(
