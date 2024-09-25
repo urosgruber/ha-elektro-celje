@@ -113,10 +113,11 @@ class ElektroCeljeParser:
 
         return None
 
-    def extract_dates(working_date: str):
+    def extract_dates(self, description: str):
         import re
         from datetime import datetime
 
+        _LOGGER.debug(f"Dates to be parsed: {description}")
         # Regex to extract the date and time
         date_regex = re.compile(r"(\d{1,2}\. \w+ \d{4})")
         time_regex = re.compile(r"(\d{2}:\d{2})")

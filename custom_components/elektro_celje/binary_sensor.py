@@ -58,6 +58,8 @@ class ElektroCeljeSensor(BinarySensorEntity):
         self._attr_last_changed = None 
         self._published_date = None
         self._working_date = None
+        self._start_date = None
+        self._end_date = None
         self._description = None
         self._scan_interval = SCAN_INTERVAL
 
@@ -98,6 +100,8 @@ class ElektroCeljeSensor(BinarySensorEntity):
             "last_changed": self._attr_last_changed,
             "published_date": self._published_date,
             "working_date": self._working_date,
+            "start_date": self._start_date,
+            "end_date": self._end_date,
             "description": self._description,
         }
 
@@ -117,6 +121,8 @@ class ElektroCeljeSensor(BinarySensorEntity):
             # Update attributes
             self._published_date = elektro_celje_data.published_date
             self._working_date = elektro_celje_data.working_date
+            self._start_date = elektro_celje_data.start_date
+            self._end_date = elektro_celje_data.end_date
             self._description = elektro_celje_data.description
 
             # Update last changed timestamp

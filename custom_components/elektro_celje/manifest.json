@@ -5,7 +5,7 @@
   "dependencies": [],
   "codeowners": [],
   "requirements": ["feedparser", "beautifulsoup4"],
-  "version": "1.0.3",
+  "version": "1.0.4",
   "state_class": "measurement",
   "integration": "Elektro Celje notification",
   "is_release": false,
