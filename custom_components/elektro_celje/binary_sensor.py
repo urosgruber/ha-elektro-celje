@@ -16,7 +16,7 @@ _LOGGER.info("Setting up Elektro Celje binary sensor platform...")
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_NAME): vol.All(str),
-    vol.Required(CONF_REGION): vol.All(str),
+    vol.Required("region"): vol.All(str),
     vol.Required("search_station"): vol.All(str),
 })
 
