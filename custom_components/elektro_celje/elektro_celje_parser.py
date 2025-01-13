@@ -119,7 +119,7 @@ class ElektroCeljeParser:
 
         _LOGGER.debug(f"Dates to be parsed: {description}")
         # Regex to extract the date and time
-        date_regex = re.compile(r"(\d{1,2}\. \w+ \d{4})")
+        date_regex = re.compile(r"(\d{1,2}\. *\w+ \d{4})")
         time_regex = re.compile(r"(\d{2}:\d{2})")
 
         # Slovenian month replacements
@@ -150,6 +150,7 @@ class ElektroCeljeParser:
         time_matches = time_regex.findall(description)
 
         # Parse the date
+        _LOGGER.debug(f"Date match: {date_match}")
         if date_match:
             extracted_date = date_match.group(0)
             extracted_date = replace_slovenian_months(extracted_date)
