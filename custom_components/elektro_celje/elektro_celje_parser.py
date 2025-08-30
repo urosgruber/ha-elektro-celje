@@ -59,7 +59,10 @@ class ElektroCeljeParser:
                     working_date = f"Izpad elektrike {dates_list_text}" if dates_list_text else None
 
                     # Extract start and end dates from the working_date
-                    start_date, end_date = self.extract_dates(dates_list_text)
+                    if dates_list_text:
+                        start_date, end_date = self.extract_dates(dates_list_text)
+                    else:
+                        start_date, end_date = None, None
 
                     # Return encapsulated data as an object
                     return ElektroCeljeData(
@@ -151,21 +154,34 @@ class ElektroCeljeParser:
 
         # Parse the date
         _LOGGER.debug(f"Date match: {date_match}")
-        if date_match:
-            extracted_date = date_match.group(0)
-            extracted_date = replace_slovenian_months(extracted_date)
+        if not date_match:
+            _LOGGER.warning("No date found in description")
+            return None, None
+            
+        extracted_date = date_match.group(0)
+        extracted_date = replace_slovenian_months(extracted_date)
+        try:
             extracted_date = datetime.strptime(extracted_date, "%d. %B %Y")
+        except ValueError as e:
+            _LOGGER.warning(f"Failed to parse date '{extracted_date}': {e}")
+            return None, None
 
         # Parse the times
-        if time_matches:
-            start_time = time_matches[0]
-            end_time = time_matches[1]
+        if len(time_matches) < 2:
+            _LOGGER.warning(f"Expected at least 2 time matches, found {len(time_matches)}")
+            return None, None
+            
+        start_time = time_matches[0]
+        end_time = time_matches[1]
 
         # Convert the start and end times
-        start_datetime = datetime.combine(extracted_date, datetime.strptime(start_time, "%H:%M").time())
-        end_datetime = datetime.combine(extracted_date, datetime.strptime(end_time, "%H:%M").time())
-
-        return start_datetime, end_datetime
+        try:
+            start_datetime = datetime.combine(extracted_date, datetime.strptime(start_time, "%H:%M").time())
+            end_datetime = datetime.combine(extracted_date, datetime.strptime(end_time, "%H:%M").time())
+            return start_datetime, end_datetime
+        except ValueError as e:
+            _LOGGER.warning(f"Failed to parse times '{start_time}' or '{end_time}': {e}")
+            return None, None
 
 # Create an instance of ElektroCeljeParser with a region
 #elektro_celje_parser = ElektroCeljeParser("default")
