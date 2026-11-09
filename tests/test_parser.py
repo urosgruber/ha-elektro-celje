@@ -154,14 +154,6 @@ def test_all_month_forms():
             assert interval.start.month == number, name
 
 
-def test_end_before_start_moves_to_next_day():
-    status, interval, _ = parse_schedule(
-        "v petek, 13. novembra 2026, predvidoma med 22:00 in 02:00 uro"
-    )
-    assert status is ParseStatus.OK
-    assert interval.end == datetime(2026, 11, 14, 2, 0, tzinfo=TZ)
-
-
 def test_two_dates_in_one_line_fail():
     status, interval, reason = parse_schedule(
         "od 9. do 11. novembra 2026, med 8:00 in 14:00 uro"
@@ -297,3 +289,92 @@ def test_notice_id_without_number_is_stable_hash():
 
 def test_normalize():
     assert normalize("  Zabukovica   PAPEŽ ") == "zabukovica papez"
+
+
+# Final fix wave: lines that could show a wrong time are FAILED (ruling R8).
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "v torek, 10. novembra 2026, predvidoma med 8:00 in 8:00 uro",
+        "v torek, 10. novembra 2026, od 8:00 do 8:00",
+    ],
+)
+def test_zero_length_range_fails(line):
+    status, interval, reason = parse_schedule(line)
+    assert status is ParseStatus.FAILED
+    assert interval is None
+    assert reason
+
+
+def test_end_before_start_fails():
+    status, interval, reason = parse_schedule(
+        "v petek, 13. novembra 2026, predvidoma med 22:00 in 02:00 uro"
+    )
+    assert status is ParseStatus.FAILED
+    assert interval is None
+    assert reason
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "v torek, 10. novembra 2026, od 13.11. do 14.11.",
+        "v torek, 10. novembra 2026, tudi 13.11.2026 in 14.11.2026",
+        "v torek, 10. novembra 2026, nadomestni termin 13.11.",
+    ],
+)
+def test_numeric_date_is_not_a_time(line):
+    status, interval, reason = parse_schedule(line)
+    assert status is ParseStatus.FAILED
+    assert interval is None
+    assert reason
+
+
+def test_dotted_time_without_med_is_a_time():
+    status, interval, _ = parse_schedule(
+        "v torek, 10. novembra 2026, od 08.30 do 11.00"
+    )
+    assert status is ParseStatus.OK
+    assert interval.start == datetime(2026, 11, 10, 8, 30, tzinfo=TZ)
+    assert interval.end == datetime(2026, 11, 10, 11, 0, tzinfo=TZ)
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "od 10. novembra 2026 do 12. novembra",
+        "od 10. novembra 2026 do 12. novembra, med 8:00 in 14:00 uro",
+        "v torek, 10. novembra 2026 in v sredo, 11. nov., med 8:00 in 9:00",
+    ],
+)
+def test_second_date_without_year_fails(line):
+    status, interval, reason = parse_schedule(line)
+    assert status is ParseStatus.FAILED
+    assert interval is None
+    assert reason
+
+
+def test_intervals_carry_their_own_status():
+    xml = feed(
+        item(
+            [
+                "v torek, 10. novembra 2026, predvidoma med 8:00 in 9:00 uro",
+                "v sredo, 11. novembra 2026, ves dan",
+            ]
+        )
+    )
+    (notice,) = parse_feed(xml, "celje")
+    assert notice.status is ParseStatus.DATE_ONLY
+    assert [i.status for i in notice.intervals] == [
+        ParseStatus.OK,
+        ParseStatus.DATE_ONLY,
+    ]
+
+
+@pytest.mark.parametrize("name", FILES)
+def test_fixture_notice_ids_are_unique(name):
+    ids = [n.notice_id for n in parse_feed(read(name), region_of(name))]
+    assert ids
+    assert len(ids) == len(set(ids))

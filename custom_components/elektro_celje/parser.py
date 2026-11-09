@@ -24,7 +24,11 @@ MONTHS = {
 _DATE_RE = re.compile(r"(\d{1,2})\.\s*([a-zčšž]+)\s+(\d{4})", re.IGNORECASE)
 _DAY_TOKEN_RE = re.compile(r"(?<![\d:.])\d{1,2}\.(?!\d)")
 _MED_RE = re.compile(r"med\s+(\d{1,2})[:.](\d{2})\s+in\s+(\d{1,2})[:.](\d{2})")
-_TIME_RE = re.compile(r"(?<!\d)(\d{1,2})[:.](\d{2})(?!\d)")
+# A time with a dot separator is not a time when another dot follows it:
+# "13.11." and "13.11.2026" are dates (day.month.).
+_TIME_RE = re.compile(r"(?<!\d)(\d{1,2})(?::(\d{2})(?!\d)|\.(\d{2})(?![\d.]))")
+_NUMERIC_DATE_RE = re.compile(r"(?<![\d.])\d{1,2}\.\d{1,2}\.")
+_DAY_MONTH_RE = re.compile(r"(?<![\d:.])\d{1,2}\.\s*([a-zčšž]+)", re.IGNORECASE)
 _LINK_ID_RE = re.compile(r"/(\d+)-")
 _DASH_RE = re.compile(r"\s[-\u2013]\s")
 _AND_RE = re.compile(r"\sin\s")
@@ -129,13 +133,22 @@ class _DescriptionParser(HTMLParser):
 def parse_schedule(
     line: str,
 ) -> tuple[ParseStatus, Interval | None, str | None]:
-    """Read the date and time from the text of one list item."""
+    """Read the date and time from the text of one list item.
+
+    A line that could give a wrong date or time is FAILED (ruling R8).
+    """
     matches = list(_DATE_RE.finditer(line))
     if not matches:
         return ParseStatus.FAILED, None, "no date found"
-    if len(matches) > 1 or _DAY_TOKEN_RE.search(line[: matches[0].start()]):
-        return ParseStatus.FAILED, None, "more than one date in one line"
     match = matches[0]
+    rest = line[match.end() :]
+    if (
+        len(matches) > 1
+        or _DAY_TOKEN_RE.search(line[: match.start()])
+        or _NUMERIC_DATE_RE.search(line)
+        or any(m.group(1).lower()[:3] in MONTHS for m in _DAY_MONTH_RE.finditer(rest))
+    ):
+        return ParseStatus.FAILED, None, "more than one date in one line"
     month = MONTHS.get(match.group(2).lower()[:3])
     if month is None:
         return ParseStatus.FAILED, None, f"unknown month '{match.group(2)}'"
@@ -148,11 +161,16 @@ def parse_schedule(
     if med:
         sh, sm, eh, em = (int(g) for g in med.groups())
     else:
-        times = _TIME_RE.findall(line[match.end() :])
+        times = [(h, m1 or m2) for h, m1, m2 in _TIME_RE.findall(rest)]
         if len(times) < 2:
             return (
                 ParseStatus.DATE_ONLY,
-                Interval(day, day + timedelta(days=1), all_day=True),
+                Interval(
+                    day,
+                    day + timedelta(days=1),
+                    all_day=True,
+                    status=ParseStatus.DATE_ONLY,
+                ),
                 None,
             )
         (sh, sm), (eh, em) = ((int(h), int(m)) for h, m in times[:2])
@@ -162,7 +180,8 @@ def parse_schedule(
     start = day.replace(hour=sh, minute=sm)
     end = day.replace(hour=eh, minute=em)
     if end <= start:
-        end += timedelta(days=1)
+        # One date and an end at or before the start: the line is not clear.
+        return ParseStatus.FAILED, None, "end is not after start"
     return ParseStatus.OK, Interval(start, end), None
 
 

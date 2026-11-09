@@ -15,11 +15,15 @@ class ParseStatus(StrEnum):
 
 @dataclass(frozen=True)
 class Interval:
-    """One period without power."""
+    """One period without power.
+
+    The status is the parse status of the line that gave this interval.
+    """
 
     start: datetime
     end: datetime
     all_day: bool = False
+    status: ParseStatus = ParseStatus.OK
 
 
 @dataclass(frozen=True)

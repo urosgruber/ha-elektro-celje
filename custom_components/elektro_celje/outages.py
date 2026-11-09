@@ -48,7 +48,9 @@ def _outage(notice: Notice, index: int, interval: Interval | None) -> Outage:
         station_text=notice.station_text,
         text=notice.text,
         link=notice.link,
-        status=notice.status,
+        # A FAILED notice has no interval here (ruling R8). Otherwise each
+        # interval keeps the status of its own line.
+        status=interval.status if interval else notice.status,
         start=interval.start if interval else None,
         end=interval.end if interval else None,
         all_day=interval.all_day if interval else False,

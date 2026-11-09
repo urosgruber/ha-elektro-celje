@@ -151,7 +151,8 @@ def make_notice(
 
 
 def iv(start: str, end: str, all_day: bool = False) -> Interval:
-    return Interval(at(start), at(end), all_day)
+    status = ParseStatus.DATE_ONLY if all_day else ParseStatus.OK
+    return Interval(at(start), at(end), all_day, status)
 
 
 def test_build_outages_two_li_two_outages():
@@ -203,3 +204,18 @@ def test_build_outages_date_only_all_day():
     )
     (o,) = build_outages([notice], "Zabukovica")
     assert o.all_day and o.status is ParseStatus.DATE_ONLY
+
+
+def test_mixed_notice_keeps_ok_status_per_interval():
+    """A timed line stays OK in a notice that also has a date-only line (M4)."""
+    notice = make_notice(
+        status=ParseStatus.DATE_ONLY,
+        intervals=(
+            iv("2026-11-10T08:00+01:00", "2026-11-10T10:00+01:00"),
+            iv("2026-11-11T00:00+01:00", "2026-11-12T00:00+01:00", all_day=True),
+        ),
+    )
+    timed, untimed = build_outages([notice], "Zabukovica")
+    assert timed.status is ParseStatus.OK
+    assert untimed.status is ParseStatus.DATE_ONLY
+    assert is_active(timed, at("2026-11-10T09:00+01:00"))
