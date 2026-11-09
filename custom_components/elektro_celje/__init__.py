@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import ALL_REGIONS, CONF_REGION, REGIONS
 from .coordinator import RegionCoordinator, async_acquire_region, async_release_region
-from .location import LocationCoordinator, reminder_time
+from .location import LocationCoordinator, async_clear_alert_state, reminder_time
 
 type ElektroCeljeConfigEntry = ConfigEntry[LocationCoordinator]
 
@@ -63,6 +63,16 @@ async def async_unload_entry(
     for region in coordinator.regions:
         await async_release_region(hass, region.region)
     return True
+
+
+async def async_remove_entry(
+    hass: HomeAssistant, entry: ElektroCeljeConfigEntry
+) -> None:
+    """Delete the stored alert records when the user removes the location.
+
+    The records hold the matched station and notice texts.
+    """
+    await async_clear_alert_state(hass, entry.entry_id)
 
 
 async def _async_update_listener(

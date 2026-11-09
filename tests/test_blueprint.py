@@ -61,7 +61,7 @@ def _variables(hass, data: dict) -> dict:
     """Render the action variables of the blueprint for one event."""
     spec = _data()["actions"][0]["variables"]
     out: dict = {"d": data}
-    for key in ("titles", "when", "duration", "message"):
+    for key in ("titles", "when", "old_when", "duration", "message"):
         value = spec[key]
         out[key] = (
             value
@@ -102,3 +102,96 @@ async def test_message_of_failed_notice(hass) -> None:
     message = _variables(hass, data)["message"]
     assert "čas ni znan" in message
     assert "Izklop na Lopati" in message
+
+
+def _render(hass, template: str, variables: dict) -> str:
+    return Template(template, hass).async_render(variables, parse_result=False)
+
+
+def _tag_template() -> str:
+    return _data()["actions"][1]["data"]["tag"]
+
+
+async def test_tag_differs_for_two_intervals_of_one_notice(hass) -> None:
+    """Two outages of one notice get two tags, so both notifications stay."""
+    template = _tag_template()
+    tags = {
+        _render(
+            hass,
+            template,
+            {"trigger": {"event": {"data": {"entry_id": "e1", "notice_id": "43",
+                                            "key": key}}}},
+        )
+        for key in ("43:0", "43:1")
+    }  # fmt: skip
+    assert tags == {"elektro_celje_e1_43:0", "elektro_celje_e1_43:1"}
+
+
+async def test_tag_of_changed_equals_tag_of_detected(hass) -> None:
+    """A change of one outage replaces its earlier notification."""
+    template = _tag_template()
+    data = {"entry_id": "e1", "notice_id": "43", "key": "43:1"}
+    detected = _render(hass, template, {"trigger": {"event": {"data": data}}})
+    changed = _render(
+        hass,
+        template,
+        {"trigger": {"event": {"data": {**data, "old_start": "x", "old_end": "y"}}}},
+    )
+    assert detected == changed == "elektro_celje_e1_43:1"
+
+
+async def test_changed_message_shows_old_and_new_time(hass) -> None:
+    """The changed message says "was <old time>, now <new time>"."""
+    await hass.config.async_set_time_zone("Europe/Ljubljana")
+    data = {
+        "location": "Dom",
+        "start": "2026-11-11T09:00:00+01:00",
+        "end": "2026-11-11T12:00:00+01:00",
+        "old_start": "2026-11-10T08:30:00+01:00",
+        "old_end": "2026-11-10T11:00:00+01:00",
+        "all_day": False,
+        "duration_minutes": 180,
+        "text": "x",
+    }
+    message = _variables(hass, data)["message"]
+    assert "Dom" in message
+    assert "prej 10. 11. 2026, 08:30–11:00" in message
+    assert "zdaj 11. 11. 2026, 09:00–12:00" in message
+    assert message.index("prej") < message.index("zdaj")
+
+
+async def test_message_without_old_time_has_no_was_part(hass) -> None:
+    """A detected event has no old time, so the message has no "prej" part."""
+    await hass.config.async_set_time_zone("Europe/Ljubljana")
+    data = {
+        "location": "Dom",
+        "start": "2026-11-11T09:00:00+01:00",
+        "end": "2026-11-11T12:00:00+01:00",
+        "all_day": False,
+        "duration_minutes": 180,
+        "text": "x",
+    }
+    message = _variables(hass, data)["message"]
+    assert "prej" not in message
+    assert "zdaj" not in message
+
+
+async def test_changed_message_with_old_all_day_and_unknown(hass) -> None:
+    """An old all-day time says "ves dan"; an old unknown time says so."""
+    await hass.config.async_set_time_zone("Europe/Ljubljana")
+    base = {
+        "location": "Dom",
+        "start": "2026-11-11T09:00:00+01:00",
+        "end": "2026-11-11T12:00:00+01:00",
+        "all_day": False,
+        "duration_minutes": 180,
+        "text": "x",
+    }
+    all_day = {
+        **base,
+        "old_start": "2026-11-10T00:00:00+01:00",
+        "old_end": "2026-11-11T00:00:00+01:00",
+    }
+    assert "prej 10. 11. 2026, ves dan, zdaj" in _variables(hass, all_day)["message"]
+    unknown = {**base, "old_start": None, "old_end": None}
+    assert "prej čas ni znan, zdaj" in _variables(hass, unknown)["message"]

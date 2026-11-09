@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Dodaj lokacijo",
-        "description": "Vnesite ime, izberite regijo in izberite ime transformatorske postaje, kot ga zapišejo obvestila.",
+        "description": "Vnesite ime in izberite regijo. Nato vnesite točno ime transformatorske postaje, kot ga zapišejo obvestila, na primer Zabukovica Papež.",
         "data": {
           "name": "Ime",
           "region": "Regija",
@@ -12,12 +12,12 @@
         "data_description": {
           "name": "Ime lokacije, na primer Doma.",
           "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
-          "station": "Izberite ime s seznama ali ga vpišite. Ujemanje ne razlikuje velikih črk in naglasov."
+          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih."
         }
       },
       "reconfigure": {
         "title": "Spremeni lokacijo",
-        "description": "Spremenite ime, regijo ali postajo. Shranjena zgodovina opozoril te lokacije se izbriše.",
+        "description": "Spremenite ime, regijo ali postajo. Če spremenite regijo ali postajo, se shranjena zgodovina opozoril izbriše.",
         "data": {
           "name": "Ime",
           "region": "Regija",
@@ -26,7 +26,7 @@
         "data_description": {
           "name": "Ime lokacije, na primer Doma.",
           "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
-          "station": "Izberite ime s seznama ali ga vpišite. Ujemanje ne razlikuje velikih črk in naglasov."
+          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih."
         }
       },
       "confirm": {

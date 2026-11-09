@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Add a location",
-        "description": "Enter a name, choose a region and choose the station (transformer station) name as the notices write it.",
+        "description": "Enter a name and choose a region. Then enter the exact station (transformer station) name as the notices write it, for example Zabukovica Papež.",
         "data": {
           "name": "Name",
           "region": "Region",
@@ -12,12 +12,12 @@
         "data_description": {
           "name": "The name of the location, for example Home.",
           "region": "The region feed to watch. Choose All regions if you are not sure.",
-          "station": "Choose a name from the list, or type it. The match ignores case and accents."
+          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now."
         }
       },
       "reconfigure": {
         "title": "Change the location",
-        "description": "Change the name, the region or the station. The stored alert history of this location is cleared.",
+        "description": "Change the name, the region or the station. If you change the region or the station, the stored alert history is cleared.",
         "data": {
           "name": "Name",
           "region": "Region",
@@ -26,7 +26,7 @@
         "data_description": {
           "name": "The name of the location, for example Home.",
           "region": "The region feed to watch. Choose All regions if you are not sure.",
-          "station": "Choose a name from the list, or type it. The match ignores case and accents."
+          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now."
         }
       },
       "confirm": {

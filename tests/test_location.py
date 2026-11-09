@@ -332,6 +332,23 @@ async def test_clear_alert_state_removes_store(
     await _unload(hass, entry)
 
 
+async def test_remove_entry_removes_store(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer, hass_storage
+) -> None:
+    """Removing a location deletes its alert Store (I4)."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    key = f"{DOMAIN}.{entry.entry_id}"
+    assert key in hass_storage
+
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert key not in hass_storage
+    assert hass.data[DOMAIN]["regions"] == {}
+
+
 async def test_feed_recovery_refreshes_location(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
 ) -> None:

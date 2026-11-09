@@ -202,6 +202,8 @@ def event_payload(event: AlertEvent, location: str, entry_id: str) -> dict[str, 
         "location": location,
         "entry_id": entry_id,
         "notice_id": r.notice_id,
+        # One key per outage. A notice with two intervals has two keys.
+        "key": r.key,
         "region": r.region,
         "station": r.station_text,
         "start": _iso(r.start),

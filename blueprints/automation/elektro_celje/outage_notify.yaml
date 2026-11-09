@@ -3,7 +3,8 @@ blueprint:
   description: >
     Send a mobile app notification when Elektro Celje plans, changes or
     removes a power outage. Sends a reminder on the day before an outage.
-    A change replaces the earlier notification, because it uses the same tag.
+    A change replaces the earlier notification of the same outage, because it
+    uses the same tag. Two outages of one notice get two notifications.
   domain: automation
   author: urosgruber
   source_url: https://github.com/urosgruber/ha-elektro-celje/blob/master/blueprints/automation/elektro_celje/outage_notify.yaml
@@ -94,6 +95,18 @@ actions:
           {{ s.strftime('%-d. %-m. %Y') }},
           {{ 'ves dan' if d.all_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
         {% endif %}
+      old_when: >
+        {% if d.old_start is not defined %}
+        {% elif d.old_start is none %}
+          čas ni znan
+        {% else %}
+          {% set s = as_local(as_datetime(d.old_start)) %}
+          {% set e = as_local(as_datetime(d.old_end)) if d.old_end else none %}
+          {% set whole_day = e is not none and s.strftime('%H:%M') == '00:00'
+             and (e - s).total_seconds() >= 82800 %}
+          {{ s.strftime('%-d. %-m. %Y') }},
+          {{ 'ves dan' if whole_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
+        {% endif %}
       duration: >
         {% if d.duration_minutes is not none %}
           {% set m = d.duration_minutes | int %}
@@ -103,7 +116,9 @@ actions:
         {% endif %}
       message: >
         {% set m %}
-          {{ d.location }}: {{ when | trim }}
+          {{ d.location }}:
+          {%- if old_when | trim %} prej {{ old_when | trim }}, zdaj{% endif %}
+          {{ when | trim }}
           {%- if duration | trim %} ({{ duration | trim }}){% endif %}
           {%- if d.start is none and d.text %}. {{ d.text }}{% endif %}
         {% endset %}
@@ -114,4 +129,4 @@ actions:
     title: "{{ titles[trigger.event.event_type] }}"
     message: "{{ message | trim }}"
     data:
-      tag: "elektro_celje_{{ trigger.event.data.entry_id }}_{{ trigger.event.data.notice_id }}"
+      tag: "elektro_celje_{{ trigger.event.data.entry_id }}_{{ trigger.event.data.key }}"

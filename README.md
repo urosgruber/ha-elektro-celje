@@ -30,10 +30,18 @@ Add the integration once for each location. A location is one station.
 
 ### How to find the station name
 
-The station name is the name of the transformer station (TP), for example
-`TP Zabukovica`. You find it on your electricity contract or in the Elektro
-Celje customer portal. Enter a part of the name. The match ignores case and
-diacritics.
+Enter the exact station name as the notices write it, without `TP`. The
+match ignores case, accents and spacing only. A part of the name does not
+match.
+
+For example, enter `Zabukovica Papež`. The entry `Zabukovica` does not match
+the notices for `Zabukovica Papež`.
+
+The station is the transformer station (TP) that supplies your home. You find
+its name on your electricity contract or in the Elektro Celje customer portal.
+The setup form lists the station names that are in the feeds now. A station is
+in the feeds only while it has a planned outage. If your station is not in the
+list, type its name.
 
 The reminder time is an option of each location. The default is 18:00.
 
@@ -48,7 +56,7 @@ device.
 | `sensor.<location>_next_outage_start` | Start of the next outage. |
 | `sensor.<location>_next_outage_end` | End of the next outage. |
 | `sensor.<location>_days_until_outage` | Days until the next outage. |
-| `sensor.<location>_last_checked` | Time of the last attempt to read the feeds. Diagnostic. |
+| `sensor.<location>_last_checked` | Time of the last attempt to read the feeds. During a long feed failure, it shows the time of the last state change of the location, not of the last attempt. Diagnostic. |
 | `sensor.<location>_last_successful_check` | Time of the last successful read. Diagnostic. |
 | `binary_sensor.<location>_outage_planned` | On when at least one outage is planned. |
 | `binary_sensor.<location>_outage_now` | On while the power is off. |
@@ -85,6 +93,7 @@ Payload of every event:
 | `location` | Name of the location. |
 | `entry_id` | ID of the config entry. |
 | `notice_id` | ID of the notice in the feed. |
+| `key` | ID of the outage, `<notice_id>:<index>`. A notice with two dates gives two outages with two keys. |
 | `region` | Region of the notice. |
 | `station` | Station text of the notice. |
 | `start`, `end` | ISO times, or `null` when unknown. |
@@ -101,7 +110,10 @@ notice disappears.
 ## Notification blueprint
 
 The blueprint sends a mobile app notification for the four events. You select
-the phone and the events. A change replaces the earlier notification.
+the phone and the events. The notification tag is the config entry ID and the
+outage `key`. A change replaces the earlier notification of the same outage.
+Two outages of one notice give two notifications. A change shows the earlier
+time and the new time.
 
 [![Import the blueprint](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fraw.githubusercontent.com%2Furosgruber%2Fha-elektro-celje%2Fmaster%2Fblueprints%2Fautomation%2Felektro_celje%2Foutage_notify.yaml)
 
@@ -119,6 +131,12 @@ a **Conditional** card, or add a visibility condition on the card.
 
 Texts are in a small dictionary at the top of the template. Change them to
 translate the card.
+
+The card shows times in the time zone of Home Assistant. The day and month
+names come from `strftime` (`%a` and `%b`). They are in English, and the
+dictionary does not translate them. The `days_until_outage` sensor always
+counts days in `Europe/Ljubljana`. The two differ only when Home Assistant
+runs in another time zone.
 
 ```yaml
 type: markdown
@@ -269,8 +287,10 @@ If a problem lasts, open the diagnostics of the integration. Then open an
 issue on GitHub. The `binary_sensor.<location>_feed_problem` entity shows
 when a feed cannot be read.
 
-The diagnostics file redacts the location name, the station query and the
-matched notices. It is safe to attach to an issue.
+The diagnostics file shows the public region feeds and only the status of
+your outages. It redacts the location name and the station query. It does not
+show the times or the notices of your outages. Check the file
+before you attach it to an issue.
 
 Do not paste raw entity states or the `outages` attribute into a public
 issue. They contain your station name.

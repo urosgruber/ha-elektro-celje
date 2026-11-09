@@ -167,5 +167,45 @@ async def test_diagnostics_redacts(hass: HomeAssistant, freezer) -> None:
         assert matched.link not in part, section
         assert notice_id not in part, section
     assert diag["records"][0]["status"] == "ok"
-    assert diag["outages"][0]["start"] is not None
-    assert diag["outages"][0]["region"] == "velenje"
+    # Found on the day of the outage: late detection marks the reminder sent.
+    assert diag["records"][0]["reminder_sent"] is True
+    assert diag["outages"][0] == {"status": "ok", "all_day": False}
+    assert diag["status_counts"] == {
+        "outages": {"ok": 1},
+        "planned": {"ok": 1},
+        "records": {"ok": 1},
+    }
+    # Ruling R20: the location sections cannot be matched to a raw item.
+    location = {k: diag[k] for k in LOCATION_SECTIONS}
+    raw_text = json.dumps(diag["raw_items"], ensure_ascii=False)
+    for path, value in _leaves(location):
+        if isinstance(value, bool | int):
+            continue
+        assert path[-1] == "status" or path[-2] == "status_counts", path
+        assert value in {"ok", "date_only", "failed"}, path
+    for path, _ in _leaves(location):
+        assert path[-1] in ALLOWED_KEYS, path
+    for path, value in _leaves(location):
+        if isinstance(value, str) and path[-1] != "status":
+            assert value not in raw_text, path
+    location_text = json.dumps(location, ensure_ascii=False)
+    assert matched.start is not None and matched.end is not None
+    for moment in (matched.start, matched.end):
+        assert moment.isoformat() not in location_text
+        assert moment.astimezone(TZ).isoformat() not in location_text
+    assert "velenje" not in location_text
+
+
+LOCATION_SECTIONS = ("outages", "planned", "records", "status_counts")
+ALLOWED_KEYS = {"status", "all_day", "reminder_sent", "ok", "date_only", "failed"}
+
+
+def _leaves(data, path=()):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            yield from _leaves(value, (*path, key))
+    elif isinstance(data, list):
+        for index, value in enumerate(data):
+            yield from _leaves(value, (*path, index))
+    else:
+        yield path, data

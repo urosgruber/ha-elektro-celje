@@ -179,10 +179,8 @@ def test_event_type_mapping():
 def test_payload_keys_and_duration():
     _, recs, events = run({}, [outage()], dt(9, 10))
     p = event_payload(events[0], "Home", "abc")
-    assert set(p) == {
-        "location", "entry_id", "notice_id", "region", "station", "start",
-        "end", "all_day", "duration_minutes", "status", "text", "link",
-    }  # fmt: skip
+    assert set(p) == BASE_KEYS
+    assert p["key"] == "1:0"
     assert p["duration_minutes"] == 150
     assert p["status"] == "ok"
     assert p["station"] == "TP Test"
@@ -221,3 +219,37 @@ def test_reminder_fires_for_kept_record_when_region_failed():
     assert "1:0" in recs
     kinds, _, _ = run(recs, [], dt(10, 18, 15), ok=set())
     assert kinds == []
+
+
+BASE_KEYS = {
+    "location", "entry_id", "notice_id", "key", "region", "station", "start",
+    "end", "all_day", "duration_minutes", "status", "text", "link",
+}  # fmt: skip
+
+
+def test_payload_key_set_of_each_event_type():
+    """Every event has the base keys and the key; changed adds the old times."""
+    payloads = {}
+    _, recs, events = run({}, [outage()], dt(9, 10))
+    payloads[events[0].kind] = event_payload(events[0], "Home", "abc")
+    _, recs, events = run(recs, [outage()], dt(10, 18))
+    payloads[events[0].kind] = event_payload(events[0], "Home", "abc")
+    moved = outage(start=dt(11, 9), end=dt(11, 12))
+    _, recs, events = run(recs, [moved], dt(10, 19))
+    payloads[events[0].kind] = event_payload(events[0], "Home", "abc")
+    _, _, events = run(recs, [], dt(10, 20))
+    payloads[events[0].kind] = event_payload(events[0], "Home", "abc")
+    assert set(payloads) == {"detected", "reminder", "changed", "removed"}
+    for kind, payload in payloads.items():
+        expected = BASE_KEYS | (
+            {"old_start", "old_end"} if kind == "changed" else set()
+        )
+        assert set(payload) == expected, kind
+        assert payload["key"] == "1:0", kind
+
+
+def test_two_intervals_of_one_notice_have_distinct_keys():
+    two = [outage("1:0"), outage("1:1", start=dt(12, 8), end=dt(12, 10))]
+    _, _, events = run({}, two, dt(9, 10))
+    keys = [event_payload(e, "Home", "abc")["key"] for e in events]
+    assert keys == ["1:0", "1:1"]
