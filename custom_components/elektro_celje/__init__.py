@@ -12,8 +12,7 @@ from .location import LocationCoordinator, reminder_time
 
 type ElektroCeljeConfigEntry = ConfigEntry[LocationCoordinator]
 
-# The platform files arrive in a later task.
-PLATFORMS: list[Platform] = []
+PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CALENDAR]
 
 
 def _entry_regions(entry: ConfigEntry) -> list[str]:
@@ -43,7 +42,13 @@ async def async_setup_entry(
 
     entry.runtime_data = coordinator
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except BaseException:
+        await coordinator.async_shutdown()
+        for region in coordinator.regions:
+            await async_release_region(hass, region.region)
+        raise
     return True
 
 

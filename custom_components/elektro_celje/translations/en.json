@@ -73,5 +73,43 @@
     "no_planned_outage": {
       "message": "No planned outage for this station now. This is normal."
     }
+  },
+  "entity": {
+    "sensor": {
+      "planned_outages": {
+        "name": "Planned outages"
+      },
+      "next_outage_start": {
+        "name": "Next outage start"
+      },
+      "next_outage_end": {
+        "name": "Next outage end"
+      },
+      "days_until_outage": {
+        "name": "Days until outage"
+      },
+      "last_checked": {
+        "name": "Last checked"
+      },
+      "last_successful_check": {
+        "name": "Last successful check"
+      }
+    },
+    "binary_sensor": {
+      "outage_planned": {
+        "name": "Outage planned"
+      },
+      "outage_now": {
+        "name": "Outage now"
+      },
+      "feed_problem": {
+        "name": "Feed problem"
+      }
+    },
+    "calendar": {
+      "planned_outages": {
+        "name": "Planned outages"
+      }
+    }
   }
 }

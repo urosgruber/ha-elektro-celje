@@ -73,5 +73,43 @@
     "no_planned_outage": {
       "message": "Za to postajo zdaj ni načrtovanega izklopa. To je običajno."
     }
+  },
+  "entity": {
+    "sensor": {
+      "planned_outages": {
+        "name": "Načrtovani izklopi"
+      },
+      "next_outage_start": {
+        "name": "Začetek naslednjega izklopa"
+      },
+      "next_outage_end": {
+        "name": "Konec naslednjega izklopa"
+      },
+      "days_until_outage": {
+        "name": "Dni do izklopa"
+      },
+      "last_checked": {
+        "name": "Zadnji pregled"
+      },
+      "last_successful_check": {
+        "name": "Zadnji uspešen pregled"
+      }
+    },
+    "binary_sensor": {
+      "outage_planned": {
+        "name": "Izklop načrtovan"
+      },
+      "outage_now": {
+        "name": "Izklop zdaj"
+      },
+      "feed_problem": {
+        "name": "Težava z virom"
+      }
+    },
+    "calendar": {
+      "planned_outages": {
+        "name": "Načrtovani izklopi"
+      }
+    }
   }
 }
