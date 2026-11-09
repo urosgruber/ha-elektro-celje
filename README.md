@@ -5,6 +5,9 @@ It reads the public RSS feeds of Elektro Celje. It finds the outages that
 concern your transformer station (TP). It sends an alert when an outage is
 new, when it changes, when it is no longer listed, and on the day before.
 
+This is an unofficial integration. It is not made or supported by Elektro
+Celje. It reads their public RSS feeds.
+
 The integration needs no account. It polls the feeds every 15 minutes.
 
 ## Installation
@@ -58,7 +61,7 @@ device.
 
 | Entity | Meaning |
 |---|---|
-| `sensor.<location>_planned_outages` | Number of planned outages. The `outages` attribute lists them. |
+| `sensor.<location>_planned_outages` | Number of planned outages. The `outages` attribute lists them. The `ended_today` attribute lists the outages that ended earlier today. |
 | `sensor.<location>_next_outage_start` | Start of the next outage. |
 | `sensor.<location>_next_outage_end` | End of the next outage. |
 | `sensor.<location>_days_until_outage` | Days until the next outage. |
@@ -67,7 +70,7 @@ device.
 | `binary_sensor.<location>_outage_planned` | On when at least one outage is planned. |
 | `binary_sensor.<location>_outage_now` | On while the power is off. |
 | `binary_sensor.<location>_feed_problem` | On when a feed cannot be read. The `problem_since` attribute holds the start of the problem. Diagnostic. |
-| `calendar.<location>_planned_outages` | The outages as calendar events. |
+| `calendar.<location>_planned_outages` | The outages as calendar events. An outage that has ended stays in the calendar while the notice is in the feed. |
 
 Entity IDs follow the names in your language. Check them in
 **Settings > Devices & services**.
@@ -76,6 +79,12 @@ The `outages` attribute is a list. Each item has `start`, `end`, `all_day`,
 `status`, `station`, `region`, `text` and `link`. The `status` is `ok`,
 `date_only` or `failed`. When `status` is `failed`, the integration could not
 read the time. `start` and `end` are then empty.
+
+The `ended_today` attribute has the same item format. It lists the outages
+that ended earlier today, in the `Europe/Ljubljana` time zone. It lists only
+outages with the status `ok` or `date_only`. The notice must still be in the
+feed. The list is empty after local midnight. The attribute is not recorded
+in the history.
 
 ## Events
 
@@ -131,8 +140,13 @@ The notification texts are in Slovenian.
 ## Dashboard card
 
 The card is a standard Markdown card. It shows all outages of all locations.
-The card is empty when no outage is planned and no feed problem is older than
-one hour. If your dashboard still shows an empty card frame, wrap the card in
+The card is empty when no outage is planned, no outage ended today, and no
+feed problem is older than one hour.
+
+The card has a last section named **Ended today**. It lists the outages that
+ended earlier today. The text is small and grey, so it does not compete with
+the banner. The section has no banner. If only ended outages exist, the card
+shows this section and the footer. If your dashboard still shows an empty card frame, wrap the card in
 a **Conditional** card, or add a visibility condition on the card.
 
 Texts are in a small dictionary at the top of the template. Change them to
@@ -153,6 +167,8 @@ content: |
     'now': 'Outage now',
     'ends_in': 'ends in',
     'also': 'Also planned',
+    'ended_today': 'Ended today',
+    'ended': 'ended',
     'checked': 'Checked',
     'last_good': 'Last good check',
     'feed_error': 'Cannot read the Elektro Celje feed',
@@ -193,7 +209,7 @@ content: |
 
   {#- Collect the outages and the problems of all locations. -#}
   {%- set now_ = now() -%}
-  {%- set ns = namespace(items=[], problem=none, oldest=none) -%}
+  {%- set ns = namespace(items=[], ended=[], problem=none, oldest=none) -%}
   {%- for ent in integration_entities('elektro_celje') -%}
     {%- set attrs = states[ent].attributes if states[ent] is not none else {} -%}
     {%- set dev = device_id(ent) -%}
@@ -208,6 +224,13 @@ content: |
             'key': as_timestamp(s) if s else 9e12}] -%}
         {%- endif -%}
       {%- endfor -%}
+      {%- for o in attrs.get('ended_today', []) -%}
+        {%- set s = as_local(as_datetime(o.start)) if o.start else none -%}
+        {%- set e = as_local(as_datetime(o.end)) if o.end else none -%}
+        {%- set ns.ended = ns.ended + [{
+          'loc': name, 's': s, 'e': e, 'all_day': o.all_day, 'text': o.text,
+          'key': as_timestamp(s) if s else 9e12}] -%}
+      {%- endfor -%}
       {%- if attrs.last_success -%}
         {%- set ok = as_local(as_datetime(attrs.last_success)) -%}
         {%- set ns.oldest = ok if ns.oldest is none or ok < ns.oldest else ns.oldest -%}
@@ -220,6 +243,7 @@ content: |
     {%- endif -%}
   {%- endfor -%}
   {%- set items = ns.items | sort(attribute='key') -%}
+  {%- set ended = ns.ended | sort(attribute='key') -%}
 
   {#- Find the banner outage: the active one, else the next one. -#}
   {%- set pick = namespace(active=-1) -%}
@@ -232,7 +256,7 @@ content: |
   {#- With a feed problem, the banner shows only an active outage. -#}
   {%- set banner = pick.active if live else (0 if items and not ns.problem else -1) -%}
 
-  {%- if items or ns.problem -%}
+  {%- if items or ended or ns.problem -%}
   {%- if ns.problem %}
 
   <ha-alert alert-type="info" title="⚠ {{ L.feed_error }}">
@@ -270,6 +294,13 @@ content: |
   - {{ i.loc }} · {{ span(i) }}{% if i.s %} · *{{ rel(daydiff(i.s)|int) }}*{% else %} · {{ i.text }}{% endif %}
   {%- endif -%}
   {% endfor %}
+  {%- if ended %}
+
+  <font color="var(--secondary-text-color)"><small>{{ L.ended_today }}</small></font><br>
+  {% for i in ended -%}
+  <font color="var(--secondary-text-color)"><small>✓ {{ i.loc }} · {{ clock(i) }} · {{ L.ended }}</small></font>{{ '<br>' if not loop.last }}
+  {% endfor -%}
+  {%- endif %}
 
   {% if ns.oldest -%}
   *{{ L.checked }} {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*

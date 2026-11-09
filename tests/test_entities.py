@@ -319,3 +319,95 @@ async def test_forward_failure_releases_regions(
     assert entry.state is ConfigEntryState.SETUP_ERROR
     assert hass.data[DOMAIN]["regions"] == {}
     assert entry.runtime_data._shutdown_requested
+
+
+async def test_calendar_keeps_ended_outage(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """An ended outage that the feed still lists stays in the calendar."""
+    freezer.move_to(_local(9, 23))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    entity_id = _entity_id(hass, entry, "calendar", "planned_outages")
+
+    result = await hass.services.async_call(
+        "calendar",
+        "get_events",
+        {
+            "entity_id": entity_id,
+            "start_date_time": _local(9, 0).isoformat(),
+            "end_date_time": _local(10, 0).isoformat(),
+        },
+        blocking=True,
+        return_response=True,
+    )
+    events = result[entity_id]["events"]
+    assert len(events) == 1
+    assert datetime.fromisoformat(events[0]["start"]) == _local(9, 8, 30)
+    assert datetime.fromisoformat(events[0]["end"]) == _local(9, 11)
+    assert _state(hass, entry, "binary_sensor", "outage_planned").state == "off"
+    assert _state(hass, entry, "sensor", "planned_outages").state == "0"
+
+
+async def test_ended_today_attribute(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The ended_today attribute lists the outages that ended today."""
+    freezer.move_to(_local(9, 23))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert state.attributes["outages"] == []
+    ended = state.attributes["ended_today"]
+    assert len(ended) == 1
+    assert ended[0]["start"] == _local(9, 8, 30).isoformat()
+    assert ended[0]["end"] == _local(9, 11).isoformat()
+    assert ended[0]["status"] == "ok"
+
+
+async def test_ended_today_empty_before_end(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """An outage that has not ended is planned, not ended today."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert state.attributes["ended_today"] == []
+
+
+async def test_ended_today_clears_at_midnight(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """After local midnight the ended_today attribute is empty."""
+    freezer.move_to(_local(9, 23))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert len(state.attributes["ended_today"]) == 1
+
+    freezer.move_to(_local(10, 0, 1))
+    async_fire_time_changed(hass, _local(10, 0, 1))
+    await hass.async_block_till_done()
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert state.attributes["ended_today"] == []
+
+
+async def test_device_info_model(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The device names the data source and the kind of data."""
+    from homeassistant.helpers import device_registry as dr
+
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
+    assert device.manufacturer == "Elektro Celje"
+    assert device.model == "Planned outage notices (RSS)"

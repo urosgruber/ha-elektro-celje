@@ -6,6 +6,8 @@ content: |
     'now': 'Outage now',
     'ends_in': 'ends in',
     'also': 'Also planned',
+    'ended_today': 'Ended today',
+    'ended': 'ended',
     'checked': 'Checked',
     'last_good': 'Last good check',
     'feed_error': 'Cannot read the Elektro Celje feed',
@@ -46,7 +48,7 @@ content: |
 
   {#- Collect the outages and the problems of all locations. -#}
   {%- set now_ = now() -%}
-  {%- set ns = namespace(items=[], problem=none, oldest=none) -%}
+  {%- set ns = namespace(items=[], ended=[], problem=none, oldest=none) -%}
   {%- for ent in integration_entities('elektro_celje') -%}
     {%- set attrs = states[ent].attributes if states[ent] is not none else {} -%}
     {%- set dev = device_id(ent) -%}
@@ -61,6 +63,13 @@ content: |
             'key': as_timestamp(s) if s else 9e12}] -%}
         {%- endif -%}
       {%- endfor -%}
+      {%- for o in attrs.get('ended_today', []) -%}
+        {%- set s = as_local(as_datetime(o.start)) if o.start else none -%}
+        {%- set e = as_local(as_datetime(o.end)) if o.end else none -%}
+        {%- set ns.ended = ns.ended + [{
+          'loc': name, 's': s, 'e': e, 'all_day': o.all_day, 'text': o.text,
+          'key': as_timestamp(s) if s else 9e12}] -%}
+      {%- endfor -%}
       {%- if attrs.last_success -%}
         {%- set ok = as_local(as_datetime(attrs.last_success)) -%}
         {%- set ns.oldest = ok if ns.oldest is none or ok < ns.oldest else ns.oldest -%}
@@ -73,6 +82,7 @@ content: |
     {%- endif -%}
   {%- endfor -%}
   {%- set items = ns.items | sort(attribute='key') -%}
+  {%- set ended = ns.ended | sort(attribute='key') -%}
 
   {#- Find the banner outage: the active one, else the next one. -#}
   {%- set pick = namespace(active=-1) -%}
@@ -85,7 +95,7 @@ content: |
   {#- With a feed problem, the banner shows only an active outage. -#}
   {%- set banner = pick.active if live else (0 if items and not ns.problem else -1) -%}
 
-  {%- if items or ns.problem -%}
+  {%- if items or ended or ns.problem -%}
   {%- if ns.problem %}
 
   <ha-alert alert-type="info" title="⚠ {{ L.feed_error }}">
@@ -123,6 +133,13 @@ content: |
   - {{ i.loc }} · {{ span(i) }}{% if i.s %} · *{{ rel(daydiff(i.s)|int) }}*{% else %} · {{ i.text }}{% endif %}
   {%- endif -%}
   {% endfor %}
+  {%- if ended %}
+
+  <font color="var(--secondary-text-color)"><small>{{ L.ended_today }}</small></font><br>
+  {% for i in ended -%}
+  <font color="var(--secondary-text-color)"><small>✓ {{ i.loc }} · {{ clock(i) }} · {{ L.ended }}</small></font>{{ '<br>' if not loop.last }}
+  {% endfor -%}
+  {%- endif %}
 
   {% if ns.oldest -%}
   *{{ L.checked }} {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*

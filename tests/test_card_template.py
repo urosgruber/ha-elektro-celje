@@ -210,3 +210,57 @@ def test_readme_card_matches_file() -> None:
     readme = Path("README.md").read_text()
     block = readme.split("```yaml\n", 1)[1].split("\n```", 1)[0]
     assert block == CARD.read_text().rstrip("\n")
+
+
+def _ended(hour: int = 8, minute: int = 30) -> dict:
+    """An outage that ended today, from the `ended_today` attribute."""
+    return _outage(_day(0, hour, minute))
+
+
+def _set_ended(hass: HomeAssistant, outages: list[dict], ended: list[dict]) -> None:
+    _set_states(hass, outages)
+    state = hass.states.get("sensor.dom_planned_outages")
+    hass.states.async_set(
+        state.entity_id, state.state, {**state.attributes, "ended_today": ended}
+    )
+
+
+async def test_only_ended_today(hass: HomeAssistant) -> None:
+    """An ended outage alone shows the small section, no banner."""
+    await _setup(hass)
+    _set_ended(hass, [], [_ended()])
+    text = await _render(hass)
+    assert "Ended today" in text
+    assert "Dom" in text
+    assert "08:30–11:00" in text
+    assert "ha-alert" not in text
+    assert "Checked" in text
+
+
+async def test_ended_today_after_planned(hass: HomeAssistant) -> None:
+    """The planned outage keeps the banner. The ended section comes after."""
+    await _setup(hass)
+    _set_ended(hass, [_outage(_day(1, 9))], [_ended()])
+    text = await _render(hass)
+    assert text.count("ha-alert") == 2
+    assert 'alert-type="warning"' in text
+    assert text.index("Ended today") > text.rindex("</ha-alert>")
+    assert text.index("Ended today") < text.index("Checked")
+
+
+async def test_ended_today_all_day(hass: HomeAssistant) -> None:
+    """An all-day ended outage shows the all-day text."""
+    await _setup(hass)
+    outage = _outage(_day(0, 0), 24)
+    outage.update(all_day=True, status="date_only")
+    _set_ended(hass, [], [outage])
+    text = await _render(hass)
+    assert "Ended today" in text
+    assert "all day" in text
+
+
+async def test_hidden_without_ended_today(hass: HomeAssistant) -> None:
+    """No planned outage and no ended outage keeps the card empty."""
+    await _setup(hass)
+    _set_ended(hass, [], [])
+    assert await _render(hass) == ""
