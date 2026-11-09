@@ -11,6 +11,9 @@ from . import ElektroCeljeConfigEntry
 from .entity import outage_dict
 
 TO_REDACT = {"name", "title", "station"}
+# The matched notices show which station the user lives near. The key of an
+# outage contains the notice ID, so it is redacted too.
+LOCATION_REDACT = {"station", "station_text", "text", "link", "notice_id", "key"}
 
 
 async def async_get_config_entry_diagnostics(
@@ -48,9 +51,15 @@ async def async_get_config_entry_diagnostics(
             TO_REDACT,
         ),
         "raw_items": raw_items,
-        "outages": [outage_dict(o) for o in data.outages],
-        "planned": [outage_dict(o) for o in data.planned],
-        "records": {key: r.to_dict() for key, r in data.records.items()},
+        "outages": async_redact_data(
+            [outage_dict(o) for o in data.outages], LOCATION_REDACT
+        ),
+        "planned": async_redact_data(
+            [outage_dict(o) for o in data.planned], LOCATION_REDACT
+        ),
+        "records": async_redact_data(
+            [r.to_dict() for r in data.records.values()], LOCATION_REDACT
+        ),
         "feed_urls": data.feed_urls,
         "feed_ok": data.feed_ok,
     }

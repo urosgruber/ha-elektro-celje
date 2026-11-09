@@ -154,3 +154,18 @@ async def test_diagnostics_redacts(hass: HomeAssistant, freezer) -> None:
     assert {"title", "link", "text"} <= set(diag["raw_items"]["velenje"][0])
     assert len(diag["outages"]) == 1
     assert diag["records"]
+    # The sections of this location must not reveal the station or the notice.
+    matched = entry.runtime_data.data.planned[0]
+    assert matched.notice_id and matched.link
+    notice_id = matched.notice_id
+    raw = diag["raw_items"]["velenje"]
+    assert any(n["link"] == matched.link for n in raw)
+    assert any("zabukovica" in n["text"].lower() for n in raw)
+    for section in ("outages", "planned", "records"):
+        part = json.dumps(diag[section], ensure_ascii=False)
+        assert "zabukovica" not in part.lower(), section
+        assert matched.link not in part, section
+        assert notice_id not in part, section
+    assert diag["records"][0]["status"] == "ok"
+    assert diag["outages"][0]["start"] is not None
+    assert diag["outages"][0]["region"] == "velenje"
