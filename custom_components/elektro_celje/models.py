@@ -37,3 +37,22 @@ class Notice:
     intervals: tuple[Interval, ...]
     status: ParseStatus
     reason: str | None
+
+
+@dataclass(frozen=True)
+class Outage:
+    """One outage of one location.
+
+    A notice with status FAILED gives one outage with no start and no end.
+    """
+
+    key: str
+    notice_id: str
+    region: str
+    station_text: str | None
+    text: str
+    link: str
+    status: ParseStatus
+    start: datetime | None
+    end: datetime | None
+    all_day: bool
