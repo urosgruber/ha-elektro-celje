@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .location import LocationCoordinator, LocationData
 from .models import Outage
+from .outages import is_ended_today
 
 TEXT_LIMIT = 300
 
@@ -27,6 +29,11 @@ def outage_dict(outage: Outage) -> dict[str, Any]:
         "text": outage.text[:TEXT_LIMIT],
         "link": outage.link,
     }
+
+
+def ended_today(data: LocationData, now: datetime) -> list[dict[str, Any]]:
+    """Return the listed outages that ended earlier on the local date of `now`."""
+    return [outage_dict(o) for o in data.outages if is_ended_today(o, now)]
 
 
 def debug_attributes(data: LocationData) -> dict[str, Any]:
@@ -53,6 +60,7 @@ class ElektroCeljeEntity(CoordinatorEntity[LocationCoordinator]):
             identifiers={(DOMAIN, entry.entry_id)},
             name=entry.title,
             manufacturer="Elektro Celje",
+            model="Planned outage notices (RSS)",
             entry_type=DeviceEntryType.SERVICE,
         )
 

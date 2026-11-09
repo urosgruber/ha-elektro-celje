@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -21,6 +21,7 @@ from .const import (
     CONF_STATION,
     DEFAULT_REMINDER_TIME,
     DOMAIN,
+    PROBLEM_AFTER_SECONDS,
     TZ,
 )
 from .coordinator import RegionCoordinator
@@ -232,7 +233,14 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
             self._unsub_timer = None
         if self._shutdown_requested:
             return
-        when = next_boundary(planned, now, self.reminder)
+        problems = [r.problem_since for r in self.regions if r.problem_since]
+        # The card shows the feed problem one hour after it starts.
+        extra = (
+            [min(problems) + timedelta(seconds=PROBLEM_AFTER_SECONDS)]
+            if problems
+            else []
+        )
+        when = next_boundary(planned, now, self.reminder, extra)
         self._unsub_timer = async_track_point_in_utc_time(
             self.hass, self._handle_boundary, when
         )

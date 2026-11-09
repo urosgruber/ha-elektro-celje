@@ -17,6 +17,7 @@ FEED_URL = "https://www.elektro-celje.si/si/rss.ashx?k={region}"
 SCAN_INTERVAL = timedelta(minutes=15)
 TZ = ZoneInfo("Europe/Ljubljana")
 DEFAULT_REMINDER_TIME = time(18, 0)
+PROBLEM_AFTER_SECONDS = 3600  # The card shows a feed problem after one hour.
 
 EVENT_OUTAGE_DETECTED = "elektro_celje_outage_detected"
 EVENT_OUTAGE_REMINDER = "elektro_celje_outage_reminder"

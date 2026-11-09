@@ -8,9 +8,13 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity import entity_sources
 from homeassistant.helpers.template import Template
-from homeassistant.util import dt as dt_util
 from homeassistant.util.yaml import load_yaml
 from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+from custom_components.elektro_celje.cardtext import build_card
+from custom_components.elektro_celje.const import TZ
+from custom_components.elektro_celje.location import LocationData
+from custom_components.elektro_celje.models import Outage, ParseStatus
 
 CARD = Path("docs/dashboard-card.yaml")
 
@@ -21,7 +25,6 @@ def _content() -> str:
 
 async def _setup(hass: HomeAssistant, name: str = "Dom") -> None:
     """Create a location with a device and the two entities."""
-    await hass.config.async_set_time_zone("Europe/Ljubljana")
     entry = MockConfigEntry(domain="elektro_celje", title=name)
     entry.add_to_hass(hass)
     device = dr.async_get(hass).async_get_or_create(
@@ -50,159 +53,244 @@ async def _setup(hass: HomeAssistant, name: str = "Dom") -> None:
         }
 
 
-def _outage(start: datetime | None, hours: float = 2.5) -> dict:
-    end = start + timedelta(hours=hours) if start else None
-    return {
-        "start": start.isoformat() if start else None,
-        "end": end.isoformat() if end else None,
-        "all_day": False,
-        "status": "ok" if start else "failed",
-        "station": "TP Zabukovica",
-        "region": "celje",
-        "text": "Izklop zaradi vzdrževanja",
-        "link": "https://example.com",
-    }
+NOW = datetime(2026, 11, 9, 12, 0, tzinfo=TZ)
 
 
-def _set_states(
+def _t(day: int, hour: int, minute: int = 0) -> datetime:
+    return datetime(2026, 11, day, hour, minute, tzinfo=TZ)
+
+
+def _o(
+    start: datetime | None,
+    end: datetime | None = None,
+    status: ParseStatus = ParseStatus.OK,
+    all_day: bool = False,
+    key: str = "a",
+) -> Outage:
+    if start and end is None:
+        end = start + timedelta(hours=2, minutes=30)
+    return Outage(
+        key=key,
+        notice_id=key,
+        region="celje",
+        station_text="TP Zabukovica",
+        text="Izklop zaradi vzdrževanja",
+        link="https://example.com",
+        status=status if start else ParseStatus.FAILED,
+        start=start,
+        end=end,
+        all_day=all_day,
+    )
+
+
+def _set(
     hass: HomeAssistant,
-    outages: list[dict],
-    problem_since: datetime | None = None,
-    last_success: datetime | None = None,
+    outages: list[Outage],
     name: str = "dom",
+    problem_hours: float | None = None,
+    last_success: datetime | None = None,
 ) -> None:
-    last = last_success or dt_util.now()
+    """Set the states of one location, as the integration writes them."""
+    success = last_success or NOW
+    problem = NOW - timedelta(hours=problem_hours) if problem_hours else None
+    data = LocationData(
+        outages=outages,
+        planned=[o for o in outages if o.end is None or o.end > NOW],
+        records={},
+        feed_urls=[],
+        last_attempt=success,
+        last_success=success,
+        problem_since=problem,
+        feed_ok=problem is None,
+    )
+    attrs = build_card(data, name.capitalize(), NOW, "en")
     hass.states.async_set(
         f"sensor.{name}_planned_outages",
-        str(len(outages)),
-        {"outages": outages, "feed_urls": [], "last_success": last.isoformat()},
+        str(len(data.planned)),
+        {"last_success": success.astimezone(UTC).isoformat(), **attrs},
     )
     hass.states.async_set(
-        f"binary_sensor.{name}_feed_problem",
-        "on" if problem_since else "off",
-        {"problem_since": problem_since.isoformat() if problem_since else None},
+        f"binary_sensor.{name}_feed_problem", "off", {"problem_since": None}
     )
-
-
-def _day(offset: int, hour: int, minute: int = 0) -> datetime:
-    base = dt_util.now() + timedelta(days=offset)
-    return base.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
 async def _render(hass: HomeAssistant) -> str:
     return Template(_content(), hass).async_render(parse_result=False).strip()
 
 
-async def test_hidden_when_nothing_planned(hass: HomeAssistant) -> None:
-    """The card renders nothing when there is no outage and no problem."""
+async def test_hidden_when_nothing(hass: HomeAssistant, freezer) -> None:
+    """The card renders nothing when there is nothing to show."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    _set_states(hass, [])
+    _set(hass, [])
     assert await _render(hass) == ""
 
 
-async def test_hidden_on_short_problem(hass: HomeAssistant) -> None:
-    """A problem that is younger than one hour does not show the card."""
+async def test_one_outage_tomorrow(hass: HomeAssistant, freezer) -> None:
+    """One planned outage shows only the banner and the footer."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    _set_states(hass, [], problem_since=dt_util.now() - timedelta(minutes=20))
-    assert await _render(hass) == ""
-
-
-async def test_one_outage_tomorrow(hass: HomeAssistant) -> None:
-    """One planned outage shows only the banner."""
-    await _setup(hass)
-    _set_states(hass, [_outage(_day(1, 8, 30))])
+    _set(hass, [_o(_t(10, 8, 30))])
     text = await _render(hass)
-    assert "08:30–11:00" in text
-    assert "Dom" in text
-    assert "Tomorrow" in text
+    assert 'alert-type="warning"' in text
+    assert "Tomorrow, Tue 10 Nov · 08:30–11:00" in text
+    assert "Dom · 2 h 30 min · tomorrow" in text
     assert "Also planned" not in text
-    assert "Checked" in text
-    assert "elektro-celje.si" in text
+    assert "Ended today" not in text
+    assert "Checked Mon 9 Nov 2026, 12:00 · elektro-celje.si" in text
 
 
-async def test_three_outages(hass: HomeAssistant) -> None:
-    """The banner outage is not repeated in the list."""
-    await _setup(hass)
-    _set_states(
-        hass,
-        [_outage(_day(3, 8), 6), _outage(_day(1, 8, 30)), _outage(_day(4, 8), 2)],
-    )
-    text = await _render(hass)
-    assert "Also planned" in text
-    assert text.rsplit("Checked", 1)[0].count("08:30") == 1
-    assert "08:00 – 14:00 · 6 h" in text
-    assert "08:00 – 10:00 · 2 h" in text
-
-
-async def test_outage_now(hass: HomeAssistant) -> None:
-    """An active outage shows the live banner with the end."""
-    await _setup(hass)
-    start = dt_util.now() - timedelta(hours=1)
-    _set_states(hass, [_outage(start, 2.0), _outage(_day(2, 8))])
-    text = await _render(hass)
-    assert "Outage now" in text
-    assert 'alert-type="error"' in text
-    assert "ends in" in text
-    assert "Also planned" in text
-
-
-async def test_two_locations(hass: HomeAssistant) -> None:
-    """Outages of two locations appear as separate rows with their names."""
+async def test_three_outages_two_locations(hass: HomeAssistant, freezer) -> None:
+    """The banner shows once. The rest is grouped by day."""
+    freezer.move_to(NOW)
     await _setup(hass, "Dom")
     await _setup(hass, "Garaza")
-    _set_states(hass, [_outage(_day(1, 8, 30))])
-    _set_states(hass, [_outage(_day(2, 9))], name="garaza")
+    _set(hass, [_o(_t(12, 8), _t(12, 14), key="a"), _o(_t(10, 8, 30), key="b")])
+    _set(hass, [_o(_t(12, 9), _t(12, 10), key="c")], name="garaza")
     text = await _render(hass)
-    assert "Dom" in text
-    assert "Garaza" in text
+    assert text.count("ha-alert") == 2
+    assert text.count("08:30") == 1
+    assert "Also planned" in text
+    assert text.count("**Thu 12 Nov**") == 1
+    assert "- **Dom** · 08:00–14:00 · 6 h · in 3 days" in text
+    assert "- **Garaza** · 09:00–10:00 · 1 h · in 3 days" in text
+    assert text.index("Tomorrow") < text.index("Also planned")
 
 
-async def test_failed_notice_shows_time_unknown(hass: HomeAssistant) -> None:
-    """An outage without a time shows the unknown-time text."""
+async def test_live_outage(hass: HomeAssistant, freezer) -> None:
+    """An active outage shows the error banner with the end."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    _set_states(hass, [_outage(None)])
+    _set(hass, [_o(_t(9, 11), _t(9, 13)), _o(_t(10, 8), key="b")])
     text = await _render(hass)
-    assert "time unknown" in text
-    assert "Izklop zaradi vzdrževanja" in text
+    assert 'alert-type="error"' in text
+    assert "Outage now · 11:00–13:00" in text
+    assert "until 13:00" in text
+    assert "Also planned" in text
+    assert 'alert-type="warning"' not in text
 
 
-async def test_feed_problem_without_outages(hass: HomeAssistant) -> None:
-    """A problem older than one hour shows state 4."""
+async def test_feed_problem_info_alert(hass: HomeAssistant, freezer) -> None:
+    """A long feed problem shows the info alert, also with no outage."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    _set_states(
-        hass,
-        [],
-        problem_since=dt_util.now() - timedelta(hours=2),
-        last_success=dt_util.now() - timedelta(hours=4),
-    )
+    _set(hass, [], problem_hours=2, last_success=NOW - timedelta(hours=4))
     text = await _render(hass)
-    assert "Cannot read the Elektro Celje feed" in text
-    assert "Also planned" not in text
+    assert 'alert-type="info"' in text
+    assert "Cannot read the Elektro Celje feed." in text
+    assert "Last good check: today 08:00." in text
     assert "Checked" in text
 
 
-async def test_all_day_outage(hass: HomeAssistant) -> None:
-    """An all-day outage shows the all-day text and no clock time."""
+async def test_short_feed_problem_hidden(hass: HomeAssistant, freezer) -> None:
+    """A problem that is shorter than one hour shows nothing."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    start = _day(1, 0)
-    outage = _outage(start, 24)
-    outage.update(all_day=True, status="date_only")
-    _set_states(hass, [outage])
-    text = await _render(hass)
-    assert "all day" in text
-    assert "00:00" not in text.rsplit("Checked", 1)[0]
-    assert "24 h" not in text
+    _set(hass, [], problem_hours=0.3)
+    assert await _render(hass) == ""
 
 
-async def test_utc_outage_is_shown_in_local_time(hass: HomeAssistant) -> None:
-    """An outage in UTC near midnight shows the local date and time."""
+async def test_only_ended_today(hass: HomeAssistant, freezer) -> None:
+    """Ended outages alone show the small section and the footer."""
+    freezer.move_to(NOW)
     await _setup(hass)
-    local = _day(2, 0, 30)
-    utc = local.astimezone(UTC)
-    _set_states(hass, [_outage(utc, 1.0)])
+    _set(hass, [_o(_t(9, 8, 30), _t(9, 11))])
     text = await _render(hass)
-    assert "00:30–01:30" in text
-    assert local.strftime("%a %-d %b") in text
+    assert "ha-alert" not in text
+    assert "Also planned" not in text
+    assert "Ended today" in text
+    assert "<small>*✓ Dom · 08:30–11:00 · ended*</small>" in text
+    assert "font" not in text
+    assert text.index("Ended today") < text.index("Checked")
+
+
+async def test_ended_after_planned_and_problem(hass: HomeAssistant, freezer) -> None:
+    """The order is: info alert, banner, list, ended section, footer."""
+    freezer.move_to(NOW)
+    await _setup(hass)
+    _set(
+        hass,
+        [
+            _o(_t(9, 8, 30), _t(9, 11), key="e"),
+            _o(_t(10, 8), key="b"),
+            _o(_t(11, 8), key="c"),
+        ],
+        problem_hours=2,
+    )
+    text = await _render(hass)
+    order = [
+        text.index(part)
+        for part in (
+            'alert-type="info"',
+            'alert-type="warning"',
+            "Also planned",
+            "Ended today",
+            "Checked",
+        )
+    ]
+    assert order == sorted(order)
+
+
+async def test_slovenian_labels(hass: HomeAssistant, freezer) -> None:
+    """The card has no text of its own. It prints the labels of the sensor."""
+    freezer.move_to(NOW)
+    await _setup(hass)
+    _set(hass, [_o(_t(9, 8, 30), _t(9, 11)), _o(_t(10, 8), key="b")])
+    state = hass.states.get("sensor.dom_planned_outages")
+    attrs = {
+        **state.attributes,
+        **build_card(
+            LocationData(
+                outages=[_o(_t(9, 8, 30), _t(9, 11)), _o(_t(10, 8), key="b")],
+                planned=[_o(_t(10, 8), key="b")],
+                records={},
+                feed_urls=[],
+                last_attempt=NOW,
+                last_success=NOW,
+                problem_since=None,
+                feed_ok=True,
+            ),
+            "Dom",
+            NOW,
+            "sl",
+        ),
+    }
+    hass.states.async_set(state.entity_id, state.state, attrs)
+    text = await _render(hass)
+    assert "Danes končani izklopi" in text
+    assert "Preverjeno" in text
+
+
+async def test_two_live_outages_each_once(hass: HomeAssistant, freezer) -> None:
+    """Every live outage shows once, as its own error alert."""
+    freezer.move_to(NOW)
+    await _setup(hass, "Dom")
+    await _setup(hass, "Garaza")
+    _set(hass, [_o(_t(9, 11), _t(9, 13))])
+    _set(hass, [_o(_t(9, 10), _t(9, 14))], name="garaza")
+    text = await _render(hass)
+    assert text.count('alert-type="error"') == 2
+    assert text.count("Outage now") == 2
+    assert text.count("Dom ·") == 1
+    assert text.count("Garaza ·") == 1
+    assert "Also planned" not in text
+
+
+async def test_footer_is_the_oldest(hass: HomeAssistant, freezer) -> None:
+    """The footer is the one with the oldest last check."""
+    freezer.move_to(NOW)
+    await _setup(hass, "Dom")
+    await _setup(hass, "Garaza")
+    _set(hass, [_o(_t(10, 8))], last_success=_t(9, 11, 50))
+    _set(hass, [_o(_t(10, 9), key="b")], name="garaza", last_success=_t(9, 9, 15))
+    text = await _render(hass)
+    assert "09:15 · elektro-celje.si" in text
+    assert "11:50" not in text
+
+
+def test_card_is_short() -> None:
+    """The card only loops and prints."""
+    assert len(_content().splitlines()) <= 60
 
 
 def test_readme_card_matches_file() -> None:

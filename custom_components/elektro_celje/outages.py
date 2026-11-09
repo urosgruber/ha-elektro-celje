@@ -87,13 +87,34 @@ def reminder_at(o: OutageLike, reminder: time) -> datetime | None:
     return datetime.combine(day, reminder, tzinfo=TZ)
 
 
-def next_boundary(outages: list[Outage], now: datetime, reminder: time) -> datetime:
-    """Return the earliest future moment when the state can change."""
+def next_boundary(
+    outages: list[Outage],
+    now: datetime,
+    reminder: time,
+    extra: Iterable[datetime] = (),
+) -> datetime:
+    """Return the earliest future moment when the state can change.
+
+    `extra` holds other moments that matter, such as the end of the grace
+    period of a feed problem.
+    """
     local_now = now.astimezone(TZ)
     midnight = datetime.combine(
         local_now.date() + timedelta(days=1), time(0), tzinfo=TZ
     )
-    candidates = [midnight]
+    candidates = [midnight, *extra]
     for o in outages:
         candidates.extend([o.start, o.end, reminder_at(o, reminder)])
     return min(c for c in candidates if c is not None and c > now)
+
+
+def is_ended_today(o: OutageLike, now: datetime) -> bool:
+    """Return True if an OK or date-only outage ended earlier on the local day.
+
+    The last instant of the outage decides the day. An outage that ends at
+    00:00 belongs to the day before, so it is never "ended today".
+    """
+    if o.status is ParseStatus.FAILED or o.end is None or o.end > now:
+        return False
+    last = o.end - timedelta(microseconds=1)
+    return last.astimezone(TZ).date() == now.astimezone(TZ).date()

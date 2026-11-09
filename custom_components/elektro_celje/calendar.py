@@ -57,20 +57,23 @@ def _bounds(event: CalendarEvent) -> tuple[datetime, datetime]:
 
 
 class OutageCalendar(ElektroCeljeEntity, CalendarEntity):
-    """One event for each planned outage that has a start."""
+    """One event for each listed or kept outage that has a start.
+
+    Outages that ended stay in the calendar while the feed lists them.
+    """
 
     def _events(self) -> list[CalendarEvent]:
-        events = (_event(o) for o in self.data.planned)
+        listed = {o.key for o in self.data.outages}
+        kept = [o for o in self.data.planned if o.key not in listed]
+        events = (_event(o) for o in [*self.data.outages, *kept])
         return [e for e in events if e is not None]
 
     @property
     def event(self) -> CalendarEvent | None:
         """Return the current event, or the next one."""
         now = dt_util.utcnow()
-        for event in self._events():
-            if _bounds(event)[1] > now:
-                return event
-        return None
+        upcoming = [e for e in self._events() if _bounds(e)[1] > now]
+        return min(upcoming, key=lambda e: _bounds(e)[0], default=None)
 
     async def async_get_events(
         self, hass: HomeAssistant, start_date: datetime, end_date: datetime
