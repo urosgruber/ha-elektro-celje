@@ -164,8 +164,8 @@ const STYLE = `
     border-radius: calc(var(--ha-card-border-radius, 12px) - 4px);
     background: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
   }
-  .row .loc { font-weight: 600; min-width: 110px; }
-  .row .time { flex: 1; }
+  .row .loc { font-weight: 600; white-space: nowrap; }
+  .row .time { flex: 1 1 auto; white-space: nowrap; }
   .chip {
     font-size: 12px;
     padding: 2px 8px;
