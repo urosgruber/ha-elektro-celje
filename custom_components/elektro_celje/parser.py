@@ -26,6 +26,9 @@ _DAY_TOKEN_RE = re.compile(r"(?<![\d:.])\d{1,2}\.(?!\d)")
 _MED_RE = re.compile(r"med\s+(\d{1,2})[:.](\d{2})\s+in\s+(\d{1,2})[:.](\d{2})")
 _TIME_RE = re.compile(r"(?<!\d)(\d{1,2})[:.](\d{2})(?!\d)")
 _LINK_ID_RE = re.compile(r"/(\d+)-")
+_DASH_RE = re.compile(r"\s[-\u2013]\s")
+_AND_RE = re.compile(r"\sin\s")
+_TAIL_PREFIXES = ("nizkonapetostn", "izvod")
 _BLOCK_TAGS = {"p", "br", "li", "ul", "div"}
 
 _SEVERITY = {ParseStatus.OK: 0, ParseStatus.DATE_ONLY: 1, ParseStatus.FAILED: 2}
@@ -54,8 +57,19 @@ def notice_id_from(
 
 
 def split_station_names(station_text: str) -> tuple[str, ...]:
-    """Split the station text into station names (the rules come later)."""
-    return (station_text,)
+    """Return the station names in the station text.
+
+    The text ends at the first dash. It also ends at the first comma part that
+    starts with "nizkonapetostn" or "izvod". Commas and the word "in" separate
+    the names.
+    """
+    head = _DASH_RE.split(station_text, maxsplit=1)[0]
+    names: list[str] = []
+    for part in head.split(","):
+        if part.strip().casefold().startswith(_TAIL_PREFIXES):
+            break
+        names.extend(_AND_RE.split(part))
+    return tuple(name.strip() for name in names if name.strip())
 
 
 class _DescriptionParser(HTMLParser):

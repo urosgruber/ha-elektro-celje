@@ -72,7 +72,7 @@ def test_fixture_notice_fields():
     }["43322"]
     assert notice.region == "velenje"
     assert notice.station_text == "Zabukovica Papež - nizkonapetostni izvod Kozovinc"
-    assert notice.station_names == (notice.station_text,)
+    assert notice.station_names == ("Zabukovica Papež",)
     assert notice.date_texts == (
         "v ponedeljek, 09. novembra 2026, predvidoma med 08.30 in 11.00 uro",
     )

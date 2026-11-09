@@ -1,7 +1,7 @@
 [tool.ruff]
 target-version = "py313"
 line-length = 88
-extend-exclude = [".venv", ".superpowers"]
+extend-exclude = [".venv", ".superpowers", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
