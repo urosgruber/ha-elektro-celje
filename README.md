@@ -139,20 +139,47 @@ The notification texts are in Slovenian.
 
 ## Dashboard card
 
-The card is a standard Markdown card. It shows all outages of all locations.
-The integration builds all texts of the card. The card only loops and prints.
-The texts are in Slovenian when the language of Home Assistant is Slovenian.
-Otherwise they are in English.
-The card is empty when no outage is planned, no outage ended today, and no
-feed problem is older than one hour.
+The integration ships its own card. Add the card to a dashboard:
 
-The card has a last section named **Ended today**. It lists the outages that
-ended earlier today. The text is small and in italics, so it does not compete
-with the banner. The section has no banner. If only ended outages exist,
-the card shows this section and the footer.
+```yaml
+type: custom:elektro-celje-card
+```
 
-If your dashboard still shows an empty card frame, wrap the card in
-a **Conditional** card, or add a visibility condition on the card.
+You can also find the card in the card picker. Its name is
+**Elektro Celje outages**. The integration registers the card itself. You do
+not add a dashboard resource. After you install or update the integration,
+restart Home Assistant. Then hard-reload the browser, so it loads the new card.
+
+The card has one option. `title` adds a heading to the card.
+
+The card shows all outages of all locations.
+The integration builds all texts of the card. The card only draws them. The texts are in Slovenian when the
+language of Home Assistant is Slovenian. Otherwise they are in English.
+
+- A banner shows the outage that happens now, or else the next outage.
+- Each other outage that happens now has its own red banner.
+- **Also planned** lists the other outages, grouped by day. The banner outage
+  is not in this list.
+- **Ended today** lists the outages that ended earlier today. The text is
+  small and grey. The section has no banner.
+- A grey banner shows a feed problem that is older than one hour.
+- The footer shows the oldest good check of all locations.
+
+The card hides itself when no outage is planned, no outage ended today, and
+no feed problem is older than one hour. In the dashboard editor, the card
+shows the text "Elektro Celje: nothing planned", so you can find it.
+The card uses the colours of your theme. It works with light and dark themes.
+
+To see the card without Home Assistant, open `docs/card-preview.html` in a
+browser. The page shows the card with example data.
+
+### Markdown card (fallback)
+
+If you cannot use the custom card, use a standard Markdown card. The file
+`docs/dashboard-card.yaml` has the same card as a Markdown card. The Markdown
+card is empty when the custom card is hidden. If your dashboard still shows
+an empty card frame, wrap the card in a **Conditional** card, or add a
+visibility condition on the card.
 
 The `planned_outages` sensor has these attributes for the card. They are not
 recorded in the history. Do not use them in automations. Use `outages` and
@@ -160,7 +187,7 @@ recorded in the history. Do not use them in automations. Use `outages` and
 
 | Attribute | Meaning |
 |---|---|
-| `card` | A list of ready items. Each has `location`, `group`, `sort`, `title`, `detail`, `day` and `row`. The `group` is `live`, `next` or `ended`. |
+| `card` | A list of ready items. Each has `location`, `group`, `sort`, `title`, `detail`, `day`, `row`, `span` and `chip`. `span` is the time and the length. `chip` is the relative day, for example "in 3 days". The `group` is `live`, `next` or `ended`. |
 | `card_labels` | The headings `also_planned` and `ended_today`. |
 | `card_footer` | The text "Checked ..." with the last good check. |
 | `card_problem` | A text when a feed problem lasts more than one hour. Otherwise `null`. |

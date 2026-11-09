@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Elektro Celje card preview</title>
+<!--
+  Preview of the real card with example data. Serve the repository root,
+  because browsers do not load ES modules from file:// URLs:
+    python3 -m http.server 8000
+  Then open http://localhost:8000/docs/card-preview.html
+-->
+<style>
+  body { margin: 0; font-family: system-ui, sans-serif; background: #f0f0f0; }
+  h1 { font-size: 18px; margin: 16px; }
+  .theme { padding: 16px; }
+  .theme h2 { font-size: 15px; margin: 0 0 12px; }
+  .states {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 18px;
+  }
+  .states h3 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+  .hidden-note {
+    border: 2px dashed var(--divider-color);
+    border-radius: 12px;
+    padding: 30px 16px;
+    text-align: center;
+    color: var(--secondary-text-color);
+    font-size: 13px;
+  }
+  .light {
+    background: #fafafa;
+    color: #212121;
+    --primary-text-color: #212121;
+    --secondary-text-color: #727272;
+    --divider-color: rgba(0, 0, 0, 0.12);
+    --card-background-color: #ffffff;
+    --warning-color: #ffa600;
+    --error-color: #db4437;
+  }
+  .dark {
+    background: #111111;
+    color: #e1e1e1;
+    --primary-text-color: #e1e1e1;
+    --secondary-text-color: #9b9b9b;
+    --divider-color: rgba(225, 225, 225, 0.12);
+    --card-background-color: #1c1c1c;
+    --warning-color: #ffa600;
+    --error-color: #db4437;
+  }
+</style>
+<script>
+  // A small stand-in for the ha-card element of Home Assistant.
+  customElements.define("ha-card", class extends HTMLElement {
+    constructor() {
+      super();
+      const root = this.attachShadow({ mode: "open" });
+      const style = document.createElement("style");
+      style.textContent = `
+        :host {
+          display: block;
+          background: var(--ha-card-background, var(--card-background-color));
+          border-radius: var(--ha-card-border-radius, 12px);
+          border: 1px solid var(--divider-color);
+          font-family: system-ui, sans-serif;
+        }
+        .header { font-size: 20px; padding: 16px 16px 0; }`;
+      root.append(style);
+      this._header = document.createElement("div");
+      this._header.className = "header";
+      root.append(this._header, document.createElement("slot"));
+    }
+    set header(value) {
+      this._header.textContent = value;
+    }
+  });
+</script>
+</head>
+<body>
+<h1>Elektro Celje card · preview with example data</h1>
+<div id="themes"></div>
+<script type="module">
+  import "../custom_components/elektro_celje/frontend/elektro-celje-card.js";
+
+  const LABELS = { also_planned: "Also planned", ended_today: "Ended today" };
+  const FOOTER = "Checked Mon 9 Nov 2026, 16:23 · elektro-celje.si";
+
+  function next(location, sort, day, span, chip) {
+    return { location, group: "next", sort, title: "", detail: "", day,
+             row: `${span} · ${chip}`, span, chip };
+  }
+
+  const tomorrow = {
+    location: "TP Zabukovica", group: "next", sort: "2026-11-10T07:30:00+00:00",
+    title: "Tomorrow, Tue 10 Nov · 08:30–11:00", detail: "2 h 30 min · tomorrow",
+    day: "Tue 10 Nov", row: "08:30–11:00 · 2 h 30 min · tomorrow",
+    span: "08:30–11:00 · 2 h 30 min", chip: "tomorrow",
+  };
+  const lopata12 = next("TP Lopata", "2026-11-12T07:00:00+00:00", "Thu 12 Nov",
+                        "08:00–14:00 · 6 h", "in 3 days");
+  const lopata13 = next("TP Lopata", "2026-11-13T07:00:00+00:00", "Fri 13 Nov",
+                        "08:00–10:00 · 2 h", "in 4 days");
+  const live = {
+    location: "TP Zabukovica", group: "live", sort: "2026-11-10T07:30:00+00:00",
+    title: "Outage now · 08:30–11:00", detail: "until 11:00", day: "Tue 10 Nov",
+    row: "08:30–11:00", span: "08:30–11:00", chip: "",
+  };
+  const ended = {
+    location: "TP Zabukovica", group: "ended", sort: "2026-11-09T07:00:00+00:00",
+    title: "08:00–10:00 · ended", detail: "", day: "Mon 9 Nov",
+    row: "08:00–10:00", span: "08:00–10:00", chip: "",
+  };
+  const PROBLEM = "Cannot read the Elektro Celje feed. Last good check: " +
+    "Mon 9 Nov, 12:23. The list below may be old.";
+
+  function hass(card, problem = null) {
+    const eid = "sensor.dom_planned_outages";
+    return {
+      states: {
+        [eid]: {
+          entity_id: eid,
+          state: String(card.length),
+          attributes: {
+            card, card_problem: problem, card_labels: LABELS,
+            card_footer: FOOTER, last_success: "2026-11-09T15:23:00+00:00",
+          },
+        },
+      },
+      entities: { [eid]: { entity_id: eid, platform: "elektro_celje" } },
+    };
+  }
+
+  const STATES = [
+    ["1 · Nothing planned (the card is hidden)", hass([]), false],
+    ["1b · Nothing planned, dashboard edit mode", hass([]), true],
+    ["2 · Outages planned", hass([tomorrow, lopata12, lopata13]), false],
+    ["3 · Outage happening now",
+     hass([live, next("TP Lopata", "2026-11-12T07:00:00+00:00", "Thu 12 Nov",
+                      "08:00–14:00 · 6 h", "in 2 days")]), false],
+    ["4 · Feed cannot be read", hass([lopata12], PROBLEM), false],
+    ["5 · Ended today only", hass([ended]), false],
+    ["6 · Planned and ended today", hass([tomorrow, lopata12, ended]), false],
+  ];
+
+  const themes = document.getElementById("themes");
+  for (const theme of ["light", "dark"]) {
+    const section = document.createElement("section");
+    section.className = `theme ${theme}`;
+    const heading = document.createElement("h2");
+    heading.textContent = theme === "light" ? "Light theme" : "Dark theme";
+    const grid = document.createElement("div");
+    grid.className = "states";
+    for (const [label, fake, editMode] of STATES) {
+      const cell = document.createElement("div");
+      const h3 = document.createElement("h3");
+      h3.textContent = label;
+      const card = document.createElement("elektro-celje-card");
+      card.setConfig({});
+      card.editMode = editMode;
+      card.hass = fake;
+      cell.append(h3, card);
+      if (card.hidden) {
+        const note = document.createElement("div");
+        note.className = "hidden-note";
+        note.textContent = "The card is hidden.";
+        cell.append(note);
+      }
+      grid.append(cell);
+    }
+    section.append(heading, grid);
+    themes.append(section);
+  }
+</script>
+</body>
+</html>
