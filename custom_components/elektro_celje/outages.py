@@ -8,7 +8,7 @@ from typing import Protocol
 
 from .const import TZ
 from .matching import matches
-from .models import Notice, Outage, ParseStatus
+from .models import Interval, Notice, Outage, ParseStatus
 
 
 class OutageLike(Protocol):
@@ -40,7 +40,7 @@ def build_outages(notices: Iterable[Notice], query: str) -> list[Outage]:
     return result
 
 
-def _outage(notice: Notice, index: int, interval) -> Outage:
+def _outage(notice: Notice, index: int, interval: Interval | None) -> Outage:
     return Outage(
         key=f"{notice.notice_id}:{index}",
         notice_id=notice.notice_id,
