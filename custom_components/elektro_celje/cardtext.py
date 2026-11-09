@@ -9,13 +9,12 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from .const import TZ
+from .const import PROBLEM_AFTER_SECONDS, TZ
 from .location import LocationData
 from .models import Outage
 from .outages import is_active, is_ended_today
 
 TEXT_LIMIT = 120
-PROBLEM_AFTER_SECONDS = 3600
 UNKNOWN_SORT = "9999-12-31T00:00:00+00:00"
 
 TEXTS: dict[str, dict[str, Any]] = {
@@ -55,6 +54,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "checked": "Checked",
         "feed_error": "Cannot read the Elektro Celje feed.",
         "last_good": "Last good check: {when}.",
+        "list_old": "The list below may be old.",
     },
     "sl": {
         "weekdays": ["pon", "tor", "sre", "čet", "pet", "sob", "ned"],
@@ -82,16 +82,17 @@ TEXTS: dict[str, dict[str, Any]] = {
         "all_day": "ves dan",
         "unknown_time": "čas ni znan",
         "unknown_day": "Datum ni znan",
-        "now": "Izpad zdaj",
+        "now": "Izklop zdaj",
         "until": "do {time}",
         "ended": "končano",
         "h": "h",
         "min": "min",
-        "also_planned": "Še načrtovano",
-        "ended_today": "Končalo se je danes",
+        "also_planned": "Še načrtovani izklopi",
+        "ended_today": "Danes končani izklopi",
         "checked": "Preverjeno",
         "feed_error": "Podatkov Elektro Celje ni mogoče prebrati.",
         "last_good": "Zadnje uspešno preverjanje: {when}.",
+        "list_old": "Spodnji seznam je morda zastarel.",
     },
 }
 
@@ -155,7 +156,7 @@ def _item(
     o: Outage, group: str, location: str, now: datetime, t: dict[str, Any]
 ) -> dict[str, Any]:
     local_now = _local(now)
-    text = o.text[:TEXT_LIMIT]
+    text = " ".join(o.text.split())[:TEXT_LIMIT]
     item: dict[str, Any] = {
         "location": location,
         "group": group,
@@ -233,7 +234,9 @@ def build_card(
     since = data.problem_since
     if since and (now - since).total_seconds() > PROBLEM_AFTER_SECONDS:
         when = _when(data.last_success, now, t) if data.last_success else "–"
-        problem = f"{t['feed_error']} {t['last_good'].format(when=when)}"
+        problem = (
+            f"{t['feed_error']} {t['last_good'].format(when=when)} {t['list_old']}"
+        )
     return {
         "card": items,
         "card_footer": footer,

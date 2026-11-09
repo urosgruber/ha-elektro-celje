@@ -87,13 +87,22 @@ def reminder_at(o: OutageLike, reminder: time) -> datetime | None:
     return datetime.combine(day, reminder, tzinfo=TZ)
 
 
-def next_boundary(outages: list[Outage], now: datetime, reminder: time) -> datetime:
-    """Return the earliest future moment when the state can change."""
+def next_boundary(
+    outages: list[Outage],
+    now: datetime,
+    reminder: time,
+    extra: Iterable[datetime] = (),
+) -> datetime:
+    """Return the earliest future moment when the state can change.
+
+    `extra` holds other moments that matter, such as the end of the grace
+    period of a feed problem.
+    """
     local_now = now.astimezone(TZ)
     midnight = datetime.combine(
         local_now.date() + timedelta(days=1), time(0), tzinfo=TZ
     )
-    candidates = [midnight]
+    candidates = [midnight, *extra]
     for o in outages:
         candidates.extend([o.start, o.end, reminder_at(o, reminder)])
     return min(c for c in candidates if c is not None and c > now)

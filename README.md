@@ -199,6 +199,12 @@ content: |
   {{ banner.location }}{{ ' · ' ~ banner.detail if banner.detail }}
   </ha-alert>
   {% endif -%}
+  {%- for b in live[1:] %}
+
+  <ha-alert alert-type="error" title="🔌 {{ b.title }}">
+  {{ b.location }}{{ ' · ' ~ b.detail if b.detail }}
+  </ha-alert>
+  {% endfor -%}
   {%- if rest %}
 
   **{{ ns.labels.also_planned }}**

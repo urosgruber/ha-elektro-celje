@@ -576,4 +576,26 @@ async def test_card_uses_device_name_and_language(
     attrs = _state(hass, entry, "sensor", "planned_outages").attributes
     assert attrs["card"][0]["location"] == "Hiša"
     assert attrs["card"][0]["title"].startswith("Danes · ")
-    assert attrs["card_labels"]["also_planned"] == "Še načrtovano"
+    assert attrs["card_labels"]["also_planned"] == "Še načrtovani izklopi"
+
+
+async def test_card_problem_appears_after_one_hour(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The problem text shows at the one hour mark, without a feed poll."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry("no such station")
+    await _setup(hass, entry)
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VELENJE, status=500)
+    await entry.runtime_data.regions[0].async_refresh()
+    await hass.async_block_till_done()
+    attrs = _state(hass, entry, "sensor", "planned_outages").attributes
+    assert attrs["card_problem"] is None
+
+    freezer.move_to(_local(9, 8, 41))
+    async_fire_time_changed(hass, _local(9, 8, 41))
+    await hass.async_block_till_done()
+    attrs = _state(hass, entry, "sensor", "planned_outages").attributes
+    assert attrs["card_problem"].startswith("Cannot read the Elektro Celje feed.")

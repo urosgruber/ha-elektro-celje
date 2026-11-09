@@ -257,8 +257,35 @@ async def test_slovenian_labels(hass: HomeAssistant, freezer) -> None:
     }
     hass.states.async_set(state.entity_id, state.state, attrs)
     text = await _render(hass)
-    assert "Končalo se je danes" in text
+    assert "Danes končani izklopi" in text
     assert "Preverjeno" in text
+
+
+async def test_two_live_outages_each_once(hass: HomeAssistant, freezer) -> None:
+    """Every live outage shows once, as its own error alert."""
+    freezer.move_to(NOW)
+    await _setup(hass, "Dom")
+    await _setup(hass, "Garaza")
+    _set(hass, [_o(_t(9, 11), _t(9, 13))])
+    _set(hass, [_o(_t(9, 10), _t(9, 14))], name="garaza")
+    text = await _render(hass)
+    assert text.count('alert-type="error"') == 2
+    assert text.count("Outage now") == 2
+    assert text.count("Dom ·") == 1
+    assert text.count("Garaza ·") == 1
+    assert "Also planned" not in text
+
+
+async def test_footer_is_the_oldest(hass: HomeAssistant, freezer) -> None:
+    """The footer is the one with the oldest last check."""
+    freezer.move_to(NOW)
+    await _setup(hass, "Dom")
+    await _setup(hass, "Garaza")
+    _set(hass, [_o(_t(10, 8))], last_success=_t(9, 11, 50))
+    _set(hass, [_o(_t(10, 9), key="b")], name="garaza", last_success=_t(9, 9, 15))
+    text = await _render(hass)
+    assert "09:15 · elektro-celje.si" in text
+    assert "11:50" not in text
 
 
 def test_card_is_short() -> None:

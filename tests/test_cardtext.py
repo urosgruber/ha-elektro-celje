@@ -150,7 +150,8 @@ def test_labels_footer_problem_english() -> None:
     }
     assert result["card_footer"] == "Checked Mon 9 Nov 2026, 12:23 · elektro-celje.si"
     assert result["card_problem"] == (
-        "Cannot read the Elektro Celje feed. Last good check: today 12:23."
+        "Cannot read the Elektro Celje feed. Last good check: today 12:23. "
+        "The list below may be old."
     )
 
 
@@ -159,7 +160,9 @@ def test_short_problem_and_no_success() -> None:
     assert result["card_problem"] is None
     assert result["card_footer"] is None
     long = _card([], problem_since=NOW - timedelta(hours=2))
-    assert long["card_problem"].endswith("Last good check: –.")
+    assert long["card_problem"].endswith(
+        "Last good check: –. The list below may be old."
+    )
 
 
 def test_problem_last_good_other_day() -> None:
@@ -189,8 +192,8 @@ def test_slovenian() -> None:
         by_key["08:00–14:00 · 6 h · čez 3 dni"]["title"] == "čet 12. nov · 08:00–14:00"
     )
     assert by_key["ves dan · čez 4 dni"]["title"] == "pet 13. nov · ves dan"
-    assert result["card_labels"]["ended_today"] == "Končalo se je danes"
-    assert result["card_labels"]["also_planned"] == "Še načrtovano"
+    assert result["card_labels"]["ended_today"] == "Danes končani izklopi"
+    assert result["card_labels"]["also_planned"] == "Še načrtovani izklopi"
     assert result["card_footer"].startswith("Preverjeno pon 9. nov 2026, 12:23")
     assert "Zadnje uspešno preverjanje: danes 12:23." in result["card_problem"]
 
@@ -198,7 +201,7 @@ def test_slovenian() -> None:
 def test_language_fallback() -> None:
     assert _card([], lang="de")["card_labels"]["ended_today"] == "Ended today"
     assert (
-        _card([], lang="sl-SI")["card_labels"]["ended_today"] == "Končalo se je danes"
+        _card([], lang="sl-SI")["card_labels"]["ended_today"] == "Danes končani izklopi"
     )
 
 
@@ -230,3 +233,34 @@ def test_sort_uses_utc() -> None:
     b = _o("b", _t(10, 26, 8), _t(10, 26, 9))
     items = build_card(_data([a, b], [a, b]), "Dom", _t(10, 20), "en")["card"]
     assert items[0]["sort"] < items[1]["sort"]
+
+
+def test_slovenian_wording() -> None:
+    result = _card(
+        [_o("a", _t(11, 9, 11), _t(11, 9, 13))],
+        lang="sl",
+        last_success=_t(11, 9, 12, 23),
+        problem_since=NOW - timedelta(hours=2),
+    )
+    assert result["card"][0]["title"].startswith("Izklop zdaj · ")
+    assert result["card_labels"] == {
+        "also_planned": "Še načrtovani izklopi",
+        "ended_today": "Danes končani izklopi",
+    }
+    assert result["card_problem"].endswith(" Spodnji seznam je morda zastarel.")
+    from custom_components.elektro_celje.cardtext import TEXTS
+
+    assert "izpad" not in str(TEXTS).lower()
+
+
+def test_problem_warns_that_the_list_may_be_old() -> None:
+    result = _card([], problem_since=NOW - timedelta(hours=2))
+    assert result["card_problem"].endswith(" The list below may be old.")
+
+
+def test_feed_text_is_cleaned() -> None:
+    text = 'Izklop "A" <b>\n  zaradi\tdel</b>'
+    failed = _o("f", None, None, ParseStatus.FAILED, text=text)
+    item = _card([failed])["card"][0]
+    assert item["detail"] == 'Izklop "A" <b> zaradi del</b>'
+    assert item["row"] == 'time unknown · Izklop "A" <b> zaradi del</b>'

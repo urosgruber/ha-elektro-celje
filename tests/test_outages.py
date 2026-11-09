@@ -219,3 +219,9 @@ def test_mixed_notice_keeps_ok_status_per_interval():
     assert timed.status is ParseStatus.OK
     assert untimed.status is ParseStatus.DATE_ONLY
     assert is_active(timed, at("2026-11-10T09:00+01:00"))
+
+
+def test_next_boundary_includes_extra_moments():
+    r = time(18, 0)
+    extra = at("2026-11-10T09:30+01:00")
+    assert next_boundary([], at("2026-11-10T07:00+01:00"), r, [extra]) == extra
