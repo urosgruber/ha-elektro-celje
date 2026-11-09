@@ -16,6 +16,7 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.13"
+          prune-cache: false
       - name: Install the test requirements
         run: |
           uv pip install -r requirements_test.txt
