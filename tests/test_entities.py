@@ -4,7 +4,6 @@ from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -26,12 +25,6 @@ from custom_components.elektro_celje.const import (
 
 FIXTURES = Path(__file__).parent / "fixtures"
 VELENJE = FEED_URL.format(region="velenje")
-
-# The calendar platform sets up the HA http component. With the installed
-# aiohttp, that component raises an upstream warning that we cannot fix here.
-pytestmark = pytest.mark.filterwarnings(
-    "ignore::aiohttp.web_exceptions.NotAppKeyWarning"
-)
 
 
 def _feed(region: str) -> str:

@@ -10,3 +10,7 @@ select = ["E", "F", "I", "UP", "B"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    "error",
+    "ignore::aiohttp.web_exceptions.NotAppKeyWarning",
+]

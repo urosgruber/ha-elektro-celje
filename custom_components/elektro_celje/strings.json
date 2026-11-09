@@ -111,5 +111,11 @@
         "name": "Planned outages"
       }
     }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "The Elektro Celje YAML configuration is deprecated",
+      "description": "Home Assistant imported your Elektro Celje binary sensors from YAML into config entries. Remove the `elektro_celje` platform entries from your YAML files, then restart Home Assistant. The imported locations keep working. Entity IDs of the new entities can differ from the old entity IDs."
+    }
   }
 }

@@ -111,5 +111,11 @@
         "name": "Načrtovani izklopi"
       }
     }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "Nastavitev Elektro Celje v YAML je zastarela",
+      "description": "Home Assistant je vaše binarne senzorje Elektro Celje iz YAML uvozil kot konfiguracijske vnose. Odstranite vnose platforme `elektro_celje` iz datotek YAML in znova zaženite Home Assistant. Uvožene lokacije še naprej delujejo. ID-ji novih entitet se lahko razlikujejo od starih."
+    }
   }
 }
