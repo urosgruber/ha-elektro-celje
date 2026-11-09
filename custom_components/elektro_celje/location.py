@@ -166,7 +166,13 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                     for notice in region.data.notices
                 ]
                 outages = build_outages(notices, self.query)
-                ok_regions = {r.region for r in self.regions if _region_ok(r)}
+                # A suspect empty read keeps the records, as a failed read does,
+                # but it is not a feed problem (ruling R21).
+                ok_regions = {
+                    r.region
+                    for r in self.regions
+                    if _region_ok(r) and not r.suspect_empty
+                }
                 events, records = evaluate(
                     self._records, outages, now, ok_regions, self.reminder
                 )

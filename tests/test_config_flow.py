@@ -106,6 +106,47 @@ async def test_preview_shows_match(
     assert "Velenje" in matches
 
 
+EVIL_STATION = "Evil [x](https://e.example) <img> *a* _b_ !c `d`"
+MARKDOWN_CHARS = "[]!<>*_`"
+
+
+def _evil_feed() -> str:
+    station = EVIL_STATION.replace("&", "&amp;").replace("<", "&lt;")
+    station = station.replace(">", "&gt;")
+    desc = (
+        f"<p>Izklop <strong>{station}</strong></p><ul class='dates-list'>"
+        "<li><strong>v torek, 10. novembra 2026, predvidoma med 8:00 in 9:00 "
+        "uro [y]</strong></li></ul>"
+    )
+    escaped = desc.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return (
+        "<rss version='2.0'><channel><title>t</title><item><title>a</title>"
+        "<link>https://x/si/a/1/43999-a</link>"
+        f"<description>{escaped}</description></item></channel></rss>"
+    )
+
+
+async def test_preview_escapes_markdown(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """Feed text in the confirm step cannot add links, images or HTML."""
+    for region in REGIONS:
+        text = _evil_feed() if region == "velenje" else _feed(region)
+        aioclient_mock.get(FEED_URL.format(region=region), text=text)
+    result = await _start(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_STATION: EVIL_STATION}
+    )
+    assert result["step_id"] == "confirm"
+    matches = result["description_placeholders"]["matches"]
+    assert "Evil" in matches
+    assert "\\[y\\]" in matches
+    assert "\\<img\\>" in matches
+    for index, char in enumerate(matches):
+        if char in MARKDOWN_CHARS:
+            assert matches[index - 1] == "\\", (char, matches)
+
+
 async def test_preview_no_match_text(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
@@ -335,6 +376,9 @@ async def test_reconfigure_unload_failure_keeps_store(
     _mock_feeds(aioclient_mock)
     entry = await _setup_velenje_entry(hass, freezer)
     key = f"{DOMAIN}.{entry.entry_id}"
+    data_before = dict(entry.data)
+    title_before = entry.title
+    unique_id_before = entry.unique_id
     result = await entry.start_reconfigure_flow(hass)
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
@@ -348,6 +392,10 @@ async def test_reconfigure_unload_failure_keeps_store(
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "unload_failed"
     assert key in hass_storage
+    # Nothing was changed: the entry keeps its data, title and unique ID.
+    assert dict(entry.data) == data_before
+    assert entry.title == title_before
+    assert entry.unique_id == unique_id_before
     await hass.config_entries.async_unload(entry.entry_id)
 
 

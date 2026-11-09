@@ -25,7 +25,11 @@ async def async_fetch_feed(session: aiohttp.ClientSession, region: str) -> str:
     url = FEED_URL.format(region=region)
     try:
         async with asyncio.timeout(TIMEOUT_SECONDS):
-            async with session.get(url, headers={"User-Agent": USER_AGENT}) as response:
+            # Do not follow a redirect: it could lead to another host. A 3xx
+            # answer is a FeedError like any other status that is not 200.
+            async with session.get(
+                url, headers={"User-Agent": USER_AGENT}, allow_redirects=False
+            ) as response:
                 if response.status != 200:
                     raise FeedError(f"{url} returned HTTP {response.status}")
                 body = bytearray()

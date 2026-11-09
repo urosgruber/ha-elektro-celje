@@ -43,6 +43,9 @@ class RegionCoordinator(DataUpdateCoordinator[RegionData]):
         self.last_attempt: datetime | None = None
         self.last_success: datetime | None = None
         self.problem_since: datetime | None = None
+        # Ruling R21: a valid read with no items, after a read with items, is
+        # suspect. The locations then do not fire `removed` for this region.
+        self.suspect_empty = False
         self._attempted = False
 
     async def _async_update_data(self) -> RegionData:
@@ -63,6 +66,11 @@ class RegionCoordinator(DataUpdateCoordinator[RegionData]):
         self._attempted = True
         self.last_success = now
         self.problem_since = None
+        # self.data is the last good read. After one suspect read it is empty,
+        # so a second empty read in a row is processed normally.
+        self.suspect_empty = (
+            not notices and self.data is not None and bool(self.data.notices)
+        )
         return RegionData(notices=notices, fetched_at=now)
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -44,6 +45,14 @@ _LOGGER = logging.getLogger(__name__)
 
 CONF_NAME = "name"
 NO_MATCH_TEXT = "No planned outage for this station now. This is normal."
+
+
+_MARKDOWN_RE = re.compile(r"([\\`*_\[\]!<>])")
+
+
+def _escape_markdown(text: str) -> str:
+    """Escape feed text, so it cannot add links, images or HTML to the form."""
+    return _MARKDOWN_RE.sub(r"\\\1", text)
 
 
 def _region_slugs(region: str) -> list[str]:
@@ -221,8 +230,9 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
         ]
         if notices:
             text = "\n".join(
-                f"- {' / '.join(notice.date_texts)}: "
-                f"{notice.station_text or ''} ({REGIONS[notice.region]})"
+                f"- {_escape_markdown(' / '.join(notice.date_texts))}: "
+                f"{_escape_markdown(notice.station_text or '')} "
+                f"({REGIONS[notice.region]})"
                 for notice in notices
             )
         else:
@@ -241,21 +251,24 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _async_save_reconfigure(self) -> ConfigFlowResult:
         entry = self._get_reconfigure_entry()
         unique_id = unique_id_for(self._data[CONF_REGION], self._data[CONF_STATION])
-        station_changed = unique_id != entry.unique_id
+        if unique_id == entry.unique_id:
+            # Same region and station: keep the alert state and only reload.
+            self.hass.config_entries.async_update_entry(
+                entry, title=self._data[CONF_NAME], data=self._data
+            )
+            await self.hass.config_entries.async_reload(entry.entry_id)
+            return self.async_abort(reason="reconfigure_successful")
+        # Unload first. If the unload fails, the entry and its Store stay as
+        # they were. The old records belong to the old station: drop them while
+        # the entry is unloaded, so the new setup cannot report them as removed.
+        if not await self.hass.config_entries.async_unload(entry.entry_id):
+            return self.async_abort(reason="unload_failed")
         self.hass.config_entries.async_update_entry(
             entry,
             title=self._data[CONF_NAME],
             data=self._data,
             unique_id=unique_id,
         )
-        if not station_changed:
-            # Same region and station: keep the alert state and only reload.
-            await self.hass.config_entries.async_reload(entry.entry_id)
-            return self.async_abort(reason="reconfigure_successful")
-        # The old records belong to the old station. Drop them while the entry is
-        # unloaded, so the new setup cannot report them as removed.
-        if not await self.hass.config_entries.async_unload(entry.entry_id):
-            return self.async_abort(reason="unload_failed")
         await async_clear_alert_state(self.hass, entry.entry_id)
         await self.hass.config_entries.async_setup(entry.entry_id)
         return self.async_abort(reason="reconfigure_successful")

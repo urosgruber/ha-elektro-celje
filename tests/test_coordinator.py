@@ -3,6 +3,7 @@
 from datetime import timedelta
 from pathlib import Path
 
+import aiohttp
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -140,3 +141,31 @@ async def test_user_agent_header(
         "(+https://github.com/urosgruber/ha-elektro-celje)"
     )
     await async_release_region(hass, "velenje")
+
+
+class _RecordingSession:
+    """A session stub that records the keyword arguments of `get`."""
+
+    def __init__(self) -> None:
+        self.kwargs: dict = {}
+
+    def get(self, url, **kwargs):
+        self.kwargs = kwargs
+        raise aiohttp.ClientError("stop")
+
+
+async def test_fetch_does_not_follow_redirects() -> None:
+    """M5: the client does not follow a redirect to another host."""
+    session = _RecordingSession()
+    with pytest.raises(FeedError):
+        await async_fetch_feed(session, "velenje")
+    assert session.kwargs.get("allow_redirects") is False
+
+
+async def test_redirect_status_is_a_feed_error(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+) -> None:
+    """M5: a 3xx answer is a FeedError."""
+    aioclient_mock.get(URL, status=302, headers={"Location": "https://evil.example/"})
+    with pytest.raises(FeedError, match="HTTP 302"):
+        await async_fetch_feed(async_get_clientsession(hass), "velenje")

@@ -371,6 +371,60 @@ async def test_feed_recovery_refreshes_location(
     await _unload(hass, entry)
 
 
+EMPTY_FEED = "<rss version='2.0'><channel><title>t</title></channel></rss>"
+
+
+async def _poll(hass: HomeAssistant, aioclient_mock, freezer, text: str) -> None:
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VELENJE, text=text)
+    freezer.tick(timedelta(minutes=15, seconds=1))
+    async_fire_time_changed(hass)
+    await hass.async_block_till_done()
+
+
+async def test_one_empty_read_after_items_is_suspect(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """R21: one empty read fires no removed and keeps the records."""
+    freezer.move_to(_local(9, 7, 0))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    removed = async_capture_events(hass, EVENT_OUTAGE_REMOVED)
+    detected = async_capture_events(hass, EVENT_OUTAGE_DETECTED)
+    entry = _entry()
+    coordinator = await _setup(hass, entry)
+    assert len(detected) == 1
+
+    await _poll(hass, aioclient_mock, freezer, EMPTY_FEED)
+    assert removed == []
+    assert len(coordinator.data.planned) == 1
+    assert coordinator.data.feed_ok
+
+    await _poll(hass, aioclient_mock, freezer, _feed("velenje"))
+    assert removed == []
+    assert len(detected) == 1
+    assert len(coordinator.data.planned) == 1
+    await _unload(hass, entry)
+
+
+async def test_two_empty_reads_fire_removed(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """R21: a second consecutive empty read is processed normally."""
+    freezer.move_to(_local(9, 7, 0))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    removed = async_capture_events(hass, EVENT_OUTAGE_REMOVED)
+    entry = _entry()
+    coordinator = await _setup(hass, entry)
+
+    await _poll(hass, aioclient_mock, freezer, EMPTY_FEED)
+    assert removed == []
+    await _poll(hass, aioclient_mock, freezer, EMPTY_FEED)
+    assert len(removed) == 1
+    assert coordinator.data.planned == []
+    assert coordinator.data.feed_ok
+    await _unload(hass, entry)
+
+
 async def test_unload_releases_regions(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
 ) -> None:
