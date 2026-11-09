@@ -191,7 +191,12 @@ const STYLE = `
     padding-top: 10px;
     border-top: 1px solid var(--divider-color);
   }
-  .content > .sec:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+  .content > .sec:first-child,
+  .content > .ended:first-child > .sec:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: 0;
+  }
   .day {
     font-size: 12px;
     text-transform: uppercase;
