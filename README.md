@@ -9,14 +9,20 @@ The integration needs no account. It polls the feeds every 15 minutes.
 
 ## Installation
 
-Install the integration as a HACS custom repository.
+Install the integration from the Home Assistant Marketplace (formerly
+HACS) as a custom repository. Home Assistant 2026.11 and newer has the
+Marketplace built in.
 
-1. Open HACS in Home Assistant.
-2. Open the menu and select **Custom repositories**.
-3. Add `https://github.com/urosgruber/ha-elektro-celje` with the type
-   **Integration**.
+1. Open **Settings > Marketplace**.
+2. Select **Add from link**.
+3. Enter `https://github.com/urosgruber/ha-elektro-celje`. The Marketplace
+   asks you to connect GitHub the first time.
 4. Download **Elektro Celje Obvestila o izklopih**.
 5. Restart Home Assistant.
+
+On Home Assistant older than 2026.11, use HACS instead. Open HACS, open the
+menu, select **Custom repositories**, and add the same URL with the type
+**Integration**.
 
 ## Setup
 
