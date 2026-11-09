@@ -1,0 +1,117 @@
+blueprint:
+  name: Elektro Celje outage notification
+  description: >
+    Send a mobile app notification when Elektro Celje plans, changes or
+    removes a power outage. Sends a reminder on the day before an outage.
+    A change replaces the earlier notification, because it uses the same tag.
+  domain: automation
+  author: urosgruber
+  source_url: https://github.com/urosgruber/ha-elektro-celje/blob/master/blueprints/automation/elektro_celje/outage_notify.yaml
+  input:
+    notify_device:
+      name: Device to notify
+      description: The phone that receives the notification.
+      selector:
+        device:
+          integration: mobile_app
+    on_detected:
+      name: New outage
+      description: Notify when a new outage is found.
+      default: true
+      selector:
+        boolean:
+    on_reminder:
+      name: Reminder on the day before
+      description: Notify on the day before an outage.
+      default: true
+      selector:
+        boolean:
+    on_changed:
+      name: Changed outage
+      description: Notify when the time of an outage changes.
+      default: true
+      selector:
+        boolean:
+    on_removed:
+      name: Removed outage
+      description: Notify when an outage is no longer listed.
+      default: true
+      selector:
+        boolean:
+    locations:
+      name: Locations
+      description: >
+        Location names, separated by commas. Leave empty to notify for all
+        locations.
+      default: ""
+      selector:
+        text:
+
+mode: queued
+max_exceeded: silent
+
+variables:
+  notify_flags:
+    elektro_celje_outage_detected: !input on_detected
+    elektro_celje_outage_reminder: !input on_reminder
+    elektro_celje_outage_changed: !input on_changed
+    elektro_celje_outage_removed: !input on_removed
+  location_filter: !input locations
+
+triggers:
+  - trigger: event
+    event_type: elektro_celje_outage_detected
+  - trigger: event
+    event_type: elektro_celje_outage_reminder
+  - trigger: event
+    event_type: elektro_celje_outage_changed
+  - trigger: event
+    event_type: elektro_celje_outage_removed
+
+conditions:
+  - condition: template
+    value_template: "{{ notify_flags[trigger.event.event_type] }}"
+  - condition: template
+    value_template: >
+      {% set wanted = location_filter.split(',') | map('trim') | map('lower')
+         | reject('eq', '') | list %}
+      {{ not wanted or trigger.event.data.location | lower in wanted }}
+
+actions:
+  - variables:
+      d: "{{ trigger.event.data }}"
+      titles:
+        elektro_celje_outage_detected: Načrtovan izklop
+        elektro_celje_outage_reminder: Jutri izklop
+        elektro_celje_outage_changed: Izklop spremenjen
+        elektro_celje_outage_removed: Izklop ni več objavljen
+      when: >
+        {% if d.start is none %}
+          čas ni znan
+        {% else %}
+          {% set s = as_local(as_datetime(d.start)) %}
+          {% set e = as_local(as_datetime(d.end)) if d.end else none %}
+          {{ s.strftime('%-d. %-m. %Y') }},
+          {{ 'ves dan' if d.all_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
+        {% endif %}
+      duration: >
+        {% if d.duration_minutes is not none %}
+          {% set m = d.duration_minutes | int %}
+          {% set h = m // 60 %}
+          {% set r = m % 60 %}
+          {{ [(h ~ ' h') if h else '', (r ~ ' min') if r else ''] | select | join(' ') }}
+        {% endif %}
+      message: >
+        {% set m %}
+          {{ d.location }}: {{ when | trim }}
+          {%- if duration | trim %} ({{ duration | trim }}){% endif %}
+          {%- if d.start is none and d.text %}. {{ d.text }}{% endif %}
+        {% endset %}
+        {{ m | regex_replace('\\s+', ' ') | trim }}
+  - domain: mobile_app
+    type: notify
+    device_id: !input notify_device
+    title: "{{ titles[trigger.event.event_type] }}"
+    message: "{{ message | trim }}"
+    data:
+      tag: "elektro_celje_{{ trigger.event.data.entry_id }}_{{ trigger.event.data.notice_id }}"
