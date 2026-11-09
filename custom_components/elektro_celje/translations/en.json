@@ -41,7 +41,8 @@
     "abort": {
       "already_configured": "This region and station are already set up.",
       "reconfigure_successful": "The location is changed.",
-      "invalid_import": "The imported location is not valid."
+      "invalid_import": "The imported location is not valid.",
+      "unload_failed": "The location could not be unloaded. Nothing was changed in the stored history. Restart Home Assistant and try again."
     }
   },
   "options": {

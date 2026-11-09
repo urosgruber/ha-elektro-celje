@@ -1,7 +1,9 @@
 """Tests for the config flow, the reconfigure flow and the options flow."""
 
+import json
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from homeassistant.config_entries import SOURCE_IMPORT, SOURCE_USER
 from homeassistant.core import HomeAssistant
@@ -19,6 +21,7 @@ from custom_components.elektro_celje.const import (
     CONF_REMINDER_TIME,
     CONF_STATION,
     DOMAIN,
+    EVENT_OUTAGE_DETECTED,
     EVENT_OUTAGE_REMOVED,
     FEED_URL,
     REGIONS,
@@ -246,3 +249,120 @@ async def test_reconfigure_clears_alert_state(
     assert old_ids.isdisjoint(new_ids)
     assert new_ids == {"43288"}
     await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def _setup_velenje_entry(hass, freezer, name="Home", station="zabukovica papež"):
+    freezer.move_to(datetime(2026, 11, 9, 7, 40, tzinfo=TZ))
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title=name,
+        data={"name": name, CONF_REGION: "velenje", CONF_STATION: station},
+        unique_id=f"velenje:{normalize(station)}",
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    return entry
+
+
+async def test_reconfigure_name_only(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer, hass_storage
+) -> None:
+    _mock_feeds(aioclient_mock)
+    entry = await _setup_velenje_entry(hass, freezer)
+    key = f"{DOMAIN}.{entry.entry_id}"
+    before = hass_storage[key]["data"]["records"]
+    detected = async_capture_events(hass, EVENT_OUTAGE_DETECTED)
+    removed = async_capture_events(hass, EVENT_OUTAGE_REMOVED)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "Renamed", CONF_REGION: "velenje", CONF_STATION: "Zabukovica Papež"},
+    )
+    assert result["step_id"] == "confirm"
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    await hass.async_block_till_done()
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reconfigure_successful"
+    assert entry.title == "Renamed"
+    assert entry.data["name"] == "Renamed"
+    assert hass_storage[key]["data"]["records"] == before
+    assert detected == []
+    assert removed == []
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_reconfigure_collision_with_other_entry(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    _mock_feeds(aioclient_mock)
+    entry = await _setup_velenje_entry(hass, freezer)
+    other = MockConfigEntry(
+        domain=DOMAIN,
+        title="Other",
+        data={"name": "Other", CONF_REGION: "velenje", CONF_STATION: "Breg Pevec"},
+        unique_id="velenje:breg pevec",
+    )
+    other.add_to_hass(hass)
+
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "Home", CONF_REGION: "velenje", CONF_STATION: "Breg Pevec"},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    assert entry.data[CONF_STATION] == "zabukovica papež"
+    assert entry.unique_id == "velenje:zabukovica papez"
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_import_missing_key_aborts(hass: HomeAssistant) -> None:
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_IMPORT},
+        data={"name": "X", CONF_REGION: "velenje"},
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "invalid_import"
+
+
+async def test_reconfigure_unload_failure_keeps_store(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer, hass_storage
+) -> None:
+    _mock_feeds(aioclient_mock)
+    entry = await _setup_velenje_entry(hass, freezer)
+    key = f"{DOMAIN}.{entry.entry_id}"
+    result = await entry.start_reconfigure_flow(hass)
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {"name": "Home", CONF_REGION: "velenje", CONF_STATION: "Breg Pevec"},
+    )
+    with patch.object(
+        hass.config_entries, "async_unload", return_value=False
+    ) as unload:
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+    unload.assert_called_once()
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "unload_failed"
+    assert key in hass_storage
+    await hass.config_entries.async_unload(entry.entry_id)
+
+
+def _paths(data, prefix=()):
+    if isinstance(data, dict):
+        for k, v in data.items():
+            yield from _paths(v, (*prefix, k))
+    else:
+        yield prefix
+
+
+def test_translation_parity() -> None:
+    base = Path(__file__).parent.parent / "custom_components" / "elektro_celje"
+    strings = json.loads((base / "strings.json").read_text(encoding="utf-8"))
+    en = json.loads((base / "translations" / "en.json").read_text(encoding="utf-8"))
+    sl = json.loads((base / "translations" / "sl.json").read_text(encoding="utf-8"))
+    assert strings == en
+    assert set(_paths(sl)) == set(_paths(en))

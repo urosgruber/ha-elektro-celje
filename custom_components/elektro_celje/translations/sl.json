@@ -41,7 +41,8 @@
     "abort": {
       "already_configured": "Ta regija in postaja sta že nastavljeni.",
       "reconfigure_successful": "Lokacija je spremenjena.",
-      "invalid_import": "Uvožena lokacija ni veljavna."
+      "invalid_import": "Uvožena lokacija ni veljavna.",
+      "unload_failed": "Lokacije ni bilo mogoče razložiti. Shranjena zgodovina ni spremenjena. Znova zaženite Home Assistant in poskusite znova."
     }
   },
   "options": {

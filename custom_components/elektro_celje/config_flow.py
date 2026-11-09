@@ -143,11 +143,14 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
         """Create a location from imported data, without the confirm step."""
-        data = {
-            CONF_NAME: str(import_data[CONF_NAME]).strip(),
-            CONF_REGION: import_data[CONF_REGION],
-            CONF_STATION: str(import_data[CONF_STATION]).strip(),
-        }
+        try:
+            data = {
+                CONF_NAME: str(import_data[CONF_NAME]).strip(),
+                CONF_REGION: import_data[CONF_REGION],
+                CONF_STATION: str(import_data[CONF_STATION]).strip(),
+            }
+        except KeyError:
+            return self.async_abort(reason="invalid_import")
         if (
             not data[CONF_NAME]
             or not data[CONF_STATION]
@@ -177,8 +180,17 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors[CONF_STATION] = "station_required"
             if not errors:
                 region = user_input[CONF_REGION]
-                await self.async_set_unique_id(unique_id_for(region, station))
-                self._abort_if_unique_id_configured()
+                unique_id = unique_id_for(region, station)
+                await self.async_set_unique_id(unique_id)
+                if self.source == "reconfigure":
+                    own_id = self._get_reconfigure_entry().entry_id
+                    if any(
+                        other.unique_id == unique_id and other.entry_id != own_id
+                        for other in self._async_current_entries(include_ignore=False)
+                    ):
+                        return self.async_abort(reason="already_configured")
+                else:
+                    self._abort_if_unique_id_configured()
                 self._data = {
                     CONF_NAME: name,
                     CONF_REGION: region,
@@ -228,15 +240,22 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def _async_save_reconfigure(self) -> ConfigFlowResult:
         entry = self._get_reconfigure_entry()
+        unique_id = unique_id_for(self._data[CONF_REGION], self._data[CONF_STATION])
+        station_changed = unique_id != entry.unique_id
         self.hass.config_entries.async_update_entry(
             entry,
             title=self._data[CONF_NAME],
             data=self._data,
-            unique_id=unique_id_for(self._data[CONF_REGION], self._data[CONF_STATION]),
+            unique_id=unique_id,
         )
+        if not station_changed:
+            # Same region and station: keep the alert state and only reload.
+            await self.hass.config_entries.async_reload(entry.entry_id)
+            return self.async_abort(reason="reconfigure_successful")
         # The old records belong to the old station. Drop them while the entry is
         # unloaded, so the new setup cannot report them as removed.
-        await self.hass.config_entries.async_unload(entry.entry_id)
+        if not await self.hass.config_entries.async_unload(entry.entry_id):
+            return self.async_abort(reason="unload_failed")
         await async_clear_alert_state(self.hass, entry.entry_id)
         await self.hass.config_entries.async_setup(entry.entry_id)
         return self.async_abort(reason="reconfigure_successful")
