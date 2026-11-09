@@ -11,6 +11,7 @@ from .const import (
     EVENT_OUTAGE_DETECTED,
     EVENT_OUTAGE_REMINDER,
     EVENT_OUTAGE_REMOVED,
+    TZ,
 )
 from .models import Outage, ParseStatus
 from .outages import is_planned, reminder_at
@@ -93,7 +94,7 @@ def _iso(value: datetime | None) -> str | None:
 
 
 def _parse(value: str | None) -> datetime | None:
-    return datetime.fromisoformat(value) if value else None
+    return datetime.fromisoformat(value).astimezone(TZ) if value else None
 
 
 def _reminder_passed(
@@ -101,6 +102,21 @@ def _reminder_passed(
 ) -> bool:
     moment = reminder_at(record, reminder)
     return moment is not None and now >= moment
+
+
+def _remind(
+    rec: OutageRecord, now: datetime, reminder: time, events: list[AlertEvent]
+) -> None:
+    """Add a reminder event for the record if it is due. Mark it as sent."""
+    moment = reminder_at(rec, reminder)
+    if (
+        moment is not None
+        and rec.start is not None
+        and moment <= now < rec.start
+        and not rec.reminder_sent
+    ):
+        rec.reminder_sent = True
+        events.append(AlertEvent("reminder", rec))
 
 
 def evaluate(
@@ -114,6 +130,7 @@ def evaluate(
     events: list[AlertEvent] = []
     result: dict[str, OutageRecord] = {}
     current = {o.key for o in outages}
+    notice_ids = {o.notice_id for o in outages}
 
     for o in outages:
         if not is_planned(o, now):
@@ -150,15 +167,7 @@ def evaluate(
             if changed:
                 rec.reminder_sent = _reminder_passed(rec, now, reminder)
                 events.append(AlertEvent("changed", rec, old.start, old.end))
-        moment = reminder_at(rec, reminder)
-        if (
-            moment is not None
-            and rec.start is not None
-            and moment <= now < rec.start
-            and not rec.reminder_sent
-        ):
-            rec.reminder_sent = True
-            events.append(AlertEvent("reminder", rec))
+        _remind(rec, now, reminder, events)
         result[o.key] = rec
 
     for key, rec in records.items():
@@ -166,8 +175,12 @@ def evaluate(
             continue
         if not is_planned(rec, now):
             continue
+        if rec.notice_id in notice_ids:
+            continue
         if rec.region not in ok_regions:
-            result[key] = rec
+            kept = replace(rec)
+            _remind(kept, now, reminder, events)
+            result[key] = kept
             continue
         if rec.status is not ParseStatus.FAILED:
             events.append(AlertEvent("removed", rec))

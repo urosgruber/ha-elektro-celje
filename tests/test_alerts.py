@@ -163,6 +163,7 @@ def test_records_round_trip_through_dict():
     assert data["status"] == "ok"
     assert isinstance(data["start"], str)
     assert OutageRecord.from_dict(data) == rec
+    assert OutageRecord.from_dict(data).start.tzinfo is TZ
     _, recs, _ = run({}, [outage(status=ParseStatus.FAILED)], dt(9, 10))
     rec = recs["1:0"]
     assert OutageRecord.from_dict(rec.to_dict()) == rec
@@ -194,3 +195,29 @@ def test_payload_keys_and_duration():
     p = event_payload(events[0], "Home", "abc")
     assert p["start"] is None
     assert p["duration_minutes"] is None
+
+
+def test_no_removed_when_notice_still_listed_failed():
+    two = [outage("1:0"), outage("1:1", start=dt(12, 8), end=dt(12, 10))]
+    _, recs, _ = run({}, two, dt(9, 10))
+    kinds, recs, _ = run(recs, [outage("1:0", status=ParseStatus.FAILED)], dt(9, 11))
+    assert kinds == ["changed"]
+    assert set(recs) == {"1:0"}
+
+
+def test_no_removed_when_first_interval_deleted():
+    two = [outage("1:0"), outage("1:1", start=dt(12, 8), end=dt(12, 10))]
+    _, recs, _ = run({}, two, dt(9, 10))
+    shifted = [outage("1:0", start=dt(12, 8), end=dt(12, 10))]
+    kinds, recs, _ = run(recs, shifted, dt(9, 11))
+    assert kinds == ["changed"]
+    assert set(recs) == {"1:0"}
+
+
+def test_reminder_fires_for_kept_record_when_region_failed():
+    _, recs, _ = run({}, [outage()], dt(9, 10))
+    kinds, recs, _ = run(recs, [], dt(10, 18), ok=set())
+    assert kinds == ["reminder"]
+    assert "1:0" in recs
+    kinds, _, _ = run(recs, [], dt(10, 18, 15), ok=set())
+    assert kinds == []
