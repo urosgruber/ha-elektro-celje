@@ -1,0 +1,130 @@
+type: markdown
+content: |
+  {#- Texts. Change the values to translate the card. -#}
+  {%- set L = {
+    'next': 'Next outage',
+    'now': 'Outage now',
+    'ends_in': 'ends in',
+    'also': 'Also planned',
+    'checked': 'Checked',
+    'last_good': 'Last good check',
+    'feed_error': 'Cannot read the Elektro Celje feed',
+    'list_old': 'the list below may be old',
+    'problem_since': 'Problem since',
+    'unknown_time': 'time unknown',
+    'unknown_day': 'Date unknown',
+    'all_day': 'all day',
+    'today': 'Today',
+    'tomorrow': 'Tomorrow',
+    'in_today': 'today',
+    'in_tomorrow': 'tomorrow',
+    'in_day': 'in 1 day',
+    'in_days': 'in {n} days',
+    'h': 'h',
+    'min': 'min',
+  } -%}
+  {%- macro dur(m) -%}
+    {%- set h = m // 60 -%}{%- set r = m % 60 -%}
+    {{- [(h ~ ' ' ~ L.h) if h else '', (r ~ ' ' ~ L.min) if r else ''] | select | join(' ') -}}
+  {%- endmacro -%}
+  {%- macro daydiff(s) -%}{{ (s.date() - now().date()).days }}{%- endmacro -%}
+  {%- macro rel(d) -%}
+    {%- if d <= 0 -%}{{ L.in_today }}
+    {%- elif d == 1 -%}{{ L.in_tomorrow }}
+    {%- else -%}{{ L.in_days.format(n=d) }}{%- endif -%}
+  {%- endmacro -%}
+  {%- macro clock(i) -%}
+    {%- if i.all_day -%}{{ L.all_day }}{%- else -%}{{ i.s.strftime('%H:%M') }}–{{ i.e.strftime('%H:%M') if i.e else '?' }}{%- endif -%}
+  {%- endmacro -%}
+  {%- macro span(i) -%}
+    {%- if i.s is none -%}{{ L.unknown_time }}
+    {%- elif i.all_day -%}{{ L.all_day }}
+    {%- else -%}{{ i.s.strftime('%H:%M') }} – {{ i.e.strftime('%H:%M') if i.e else '?' }}
+    {%- if i.e %} · {{ dur(((i.e - i.s).total_seconds() // 60) | int) }}{% endif -%}
+    {%- endif -%}
+  {%- endmacro -%}
+
+  {#- Collect the outages and the problems of all locations. -#}
+  {%- set now_ = now() -%}
+  {%- set ns = namespace(items=[], problem=none, oldest=none) -%}
+  {%- for ent in integration_entities('elektro_celje') -%}
+    {%- set attrs = states[ent].attributes if states[ent] is not none else {} -%}
+    {%- set dev = device_id(ent) -%}
+    {%- set name = (device_attr(dev, 'name_by_user') or device_attr(dev, 'name') or ent) if dev else ent -%}
+    {%- if ent.startswith('sensor.') and 'outages' in attrs -%}
+      {%- for o in attrs.outages -%}
+        {%- set s = as_local(as_datetime(o.start)) if o.start else none -%}
+        {%- set e = as_local(as_datetime(o.end)) if o.end else none -%}
+        {%- if e is none or e > now_ -%}
+          {%- set ns.items = ns.items + [{
+            'loc': name, 's': s, 'e': e, 'all_day': o.all_day, 'text': o.text,
+            'key': as_timestamp(s) if s else 9e12}] -%}
+        {%- endif -%}
+      {%- endfor -%}
+      {%- if attrs.last_success -%}
+        {%- set ok = as_local(as_datetime(attrs.last_success)) -%}
+        {%- set ns.oldest = ok if ns.oldest is none or ok < ns.oldest else ns.oldest -%}
+      {%- endif -%}
+    {%- elif ent.startswith('binary_sensor.') and attrs.get('problem_since') -%}
+      {%- set p = as_local(as_datetime(attrs.problem_since)) -%}
+      {%- if (now_ - p).total_seconds() > 3600 -%}
+        {%- set ns.problem = p if ns.problem is none or p < ns.problem else ns.problem -%}
+      {%- endif -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- set items = ns.items | sort(attribute='key') -%}
+
+  {#- Find the banner outage: the active one, else the next one. -#}
+  {%- set pick = namespace(active=-1) -%}
+  {%- for i in items -%}
+    {%- if pick.active < 0 and i.s is not none and i.e is not none and i.s <= now_ < i.e -%}
+      {%- set pick.active = loop.index0 -%}
+    {%- endif -%}
+  {%- endfor -%}
+  {%- set live = pick.active >= 0 -%}
+  {#- With a feed problem, the banner shows only an active outage. -#}
+  {%- set banner = pick.active if live else (0 if items and not ns.problem else -1) -%}
+
+  {%- if items or ns.problem -%}
+  {%- if ns.problem %}
+
+  <ha-alert alert-type="info" title="⚠ {{ L.feed_error }}">
+  {{ L.last_good }}: {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') if ns.oldest else '–' }} · {{ L.problem_since }} {{ ns.problem.strftime('%a %-d %b, %H:%M') }} · {{ L.list_old }}
+  </ha-alert>
+  {% endif -%}
+  {%- if banner >= 0 -%}
+  {%- set b = items[banner] -%}
+  {%- if live %}
+
+  <ha-alert alert-type="error" title="🔌 {{ L.now }} · {{ b.loc }}">
+  {{ clock(b) }} · {{ L.ends_in }} {{ dur(((b.e - now_).total_seconds() // 60) | int) }}
+  </ha-alert>
+  {% else %}
+  {%- set d = daydiff(b.s)|int if b.s else 0 %}
+
+  <ha-alert alert-type="warning" title="⚡ {{ (L.today ~ ', ') if d == 0 and b.s else (L.tomorrow ~ ', ') if d == 1 and b.s else '' }}{{ b.s.strftime('%a %-d %b') if b.s else L.unknown_day }} · {{ span(b) if not b.s else clock(b) }}">
+  {{ b.loc }}{% if b.s and b.e and not b.all_day %} · {{ dur(((b.e - b.s).total_seconds() // 60) | int) }}{% endif %}{% if b.s %} · {{ L.in_day if d == 1 else rel(d) }}{% else %} · {{ b.text }}{% endif %}
+  </ha-alert>
+  {% endif -%}
+  {%- endif -%}
+  {%- set rest = namespace(day='') -%}
+  {%- set others = items | length - (1 if banner >= 0 else 0) -%}
+  {%- if others and banner >= 0 %}
+
+  **{{ L.also }}**
+  {% endif -%}
+  {%- for i in items -%}
+  {%- if loop.index0 != banner -%}
+  {%- set label = i.s.strftime('%a %-d %b') if i.s else L.unknown_day -%}
+  {%- if label != rest.day %}
+
+  **{{ label }}**
+  {% set rest.day = label -%}{%- endif %}
+  - {{ i.loc }} · {{ span(i) }}{% if i.s %} · *{{ rel(daydiff(i.s)|int) }}*{% else %} · {{ i.text }}{% endif %}
+  {%- endif -%}
+  {% endfor %}
+
+  {% if ns.oldest -%}
+  *{{ L.checked }} {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*
+  {%- endif %}
+  {%- endif %}

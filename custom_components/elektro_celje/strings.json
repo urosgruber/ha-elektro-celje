@@ -1,0 +1,121 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a location",
+        "description": "Enter a name and choose a region. Then enter the exact station (transformer station) name as the notices write it, for example Zabukovica Papež.",
+        "data": {
+          "name": "Name",
+          "region": "Region",
+          "station": "Station"
+        },
+        "data_description": {
+          "name": "The name of the location, for example Home.",
+          "region": "The region feed to watch. Choose All regions if you are not sure.",
+          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the location",
+        "description": "Change the name, the region or the station. If you change the region or the station, the stored alert history is cleared.",
+        "data": {
+          "name": "Name",
+          "region": "Region",
+          "station": "Station"
+        },
+        "data_description": {
+          "name": "The name of the location, for example Home.",
+          "region": "The region feed to watch. Choose All regions if you are not sure.",
+          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now."
+        }
+      },
+      "confirm": {
+        "title": "Check the location",
+        "description": "Planned outages for this station now:\n\n{matches}\n\nSelect Submit to save the location."
+      }
+    },
+    "error": {
+      "station_required": "Enter a station name.",
+      "name_required": "Enter a name."
+    },
+    "abort": {
+      "already_configured": "This region and station are already set up.",
+      "reconfigure_successful": "The location is changed.",
+      "invalid_import": "The imported location is not valid.",
+      "unload_failed": "The location could not be unloaded. Nothing was changed. Restart Home Assistant and try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "reminder_time": "Reminder time"
+        },
+        "data_description": {
+          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day."
+        }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "All regions",
+        "celje": "Celje",
+        "velenje": "Velenje",
+        "krsko": "Krško",
+        "slovenj-gradec": "Slovenj Gradec"
+      }
+    }
+  },
+  "exceptions": {
+    "no_planned_outage": {
+      "message": "No planned outage for this station now. This is normal."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "planned_outages": {
+        "name": "Planned outages"
+      },
+      "next_outage_start": {
+        "name": "Next outage start"
+      },
+      "next_outage_end": {
+        "name": "Next outage end"
+      },
+      "days_until_outage": {
+        "name": "Days until outage"
+      },
+      "last_checked": {
+        "name": "Last checked"
+      },
+      "last_successful_check": {
+        "name": "Last successful check"
+      }
+    },
+    "binary_sensor": {
+      "outage_planned": {
+        "name": "Outage planned"
+      },
+      "outage_now": {
+        "name": "Outage now"
+      },
+      "feed_problem": {
+        "name": "Feed problem"
+      }
+    },
+    "calendar": {
+      "planned_outages": {
+        "name": "Planned outages"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "The Elektro Celje YAML configuration is deprecated",
+      "description": "Home Assistant imported your Elektro Celje binary sensors from YAML into config entries. Remove the `elektro_celje` platform entries from your YAML files, then restart Home Assistant. The imported locations keep working. Entity IDs of the new entities can differ from the old entity IDs."
+    }
+  }
+}

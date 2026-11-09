@@ -1,0 +1,121 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dodaj lokacijo",
+        "description": "Vnesite ime in izberite regijo. Nato vnesite točno ime transformatorske postaje, kot ga zapišejo obvestila, na primer Zabukovica Papež.",
+        "data": {
+          "name": "Ime",
+          "region": "Regija",
+          "station": "Postaja"
+        },
+        "data_description": {
+          "name": "Ime lokacije, na primer Doma.",
+          "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
+          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih."
+        }
+      },
+      "reconfigure": {
+        "title": "Spremeni lokacijo",
+        "description": "Spremenite ime, regijo ali postajo. Če spremenite regijo ali postajo, se shranjena zgodovina opozoril izbriše.",
+        "data": {
+          "name": "Ime",
+          "region": "Regija",
+          "station": "Postaja"
+        },
+        "data_description": {
+          "name": "Ime lokacije, na primer Doma.",
+          "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
+          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih."
+        }
+      },
+      "confirm": {
+        "title": "Preverite lokacijo",
+        "description": "Načrtovani izklopi za to postajo zdaj:\n\n{matches}\n\nZa shranjevanje lokacije izberite Pošlji."
+      }
+    },
+    "error": {
+      "station_required": "Vnesite ime postaje.",
+      "name_required": "Vnesite ime."
+    },
+    "abort": {
+      "already_configured": "Ta regija in postaja sta že nastavljeni.",
+      "reconfigure_successful": "Lokacija je spremenjena.",
+      "invalid_import": "Uvožena lokacija ni veljavna.",
+      "unload_failed": "Lokacije ni bilo mogoče razložiti. Nič ni spremenjeno. Znova zaženite Home Assistant in poskusite znova."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti",
+        "data": {
+          "reminder_time": "Ura opomnika"
+        },
+        "data_description": {
+          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "Vse regije",
+        "celje": "Celje",
+        "velenje": "Velenje",
+        "krsko": "Krško",
+        "slovenj-gradec": "Slovenj Gradec"
+      }
+    }
+  },
+  "exceptions": {
+    "no_planned_outage": {
+      "message": "Za to postajo zdaj ni načrtovanega izklopa. To je običajno."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "planned_outages": {
+        "name": "Načrtovani izklopi"
+      },
+      "next_outage_start": {
+        "name": "Začetek naslednjega izklopa"
+      },
+      "next_outage_end": {
+        "name": "Konec naslednjega izklopa"
+      },
+      "days_until_outage": {
+        "name": "Dni do izklopa"
+      },
+      "last_checked": {
+        "name": "Zadnji pregled"
+      },
+      "last_successful_check": {
+        "name": "Zadnji uspešen pregled"
+      }
+    },
+    "binary_sensor": {
+      "outage_planned": {
+        "name": "Izklop načrtovan"
+      },
+      "outage_now": {
+        "name": "Izklop zdaj"
+      },
+      "feed_problem": {
+        "name": "Težava z virom"
+      }
+    },
+    "calendar": {
+      "planned_outages": {
+        "name": "Načrtovani izklopi"
+      }
+    }
+  },
+  "issues": {
+    "deprecated_yaml": {
+      "title": "Nastavitev Elektro Celje v YAML je zastarela",
+      "description": "Home Assistant je vaše binarne senzorje Elektro Celje iz YAML uvozil kot konfiguracijske vnose. Odstranite vnose platforme `elektro_celje` iz datotek YAML in znova zaženite Home Assistant. Uvožene lokacije še naprej delujejo. ID-ji novih entitet se lahko razlikujejo od starih."
+    }
+  }
+}

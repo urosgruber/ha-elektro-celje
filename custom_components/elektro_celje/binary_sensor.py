@@ -1,154 +1,126 @@
-"""Platform for the Elektro Celje sensor component."""
+"""Binary sensors of the Elektro Celje integration."""
+
+from __future__ import annotations
+
 import logging
-import pprint
-import voluptuous as vol
-from datetime import timedelta
-from homeassistant.components.binary_sensor import BinarySensorEntity, PLATFORM_SCHEMA, BinarySensorDeviceClass
-from homeassistant.const import CONF_NAME, CONF_REGION
-from homeassistant.helpers.event import async_track_time_interval
+from typing import Any
 
-from .elektro_celje_parser import ElektroCeljeParser
+from homeassistant.components.binary_sensor import (
+    BinarySensorDeviceClass,
+    BinarySensorEntity,
+)
+from homeassistant.config_entries import SOURCE_IMPORT
+from homeassistant.const import CONF_NAME, EntityCategory
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.entity_platform import (
+    AddConfigEntryEntitiesCallback,
+    AddEntitiesCallback,
+)
+from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+from homeassistant.util import dt as dt_util
 
-SCAN_INTERVAL = timedelta(minutes=60)
+from . import ElektroCeljeConfigEntry
+from .const import ALL_REGIONS, CONF_REGION, CONF_STATION, DOMAIN, REGIONS
+from .entity import ElektroCeljeEntity, debug_attributes
+from .outages import is_active
+from .parser import normalize
+
+PARALLEL_UPDATES = 0
 
 _LOGGER = logging.getLogger(__name__)
-_LOGGER.info("Setting up Elektro Celje binary sensor platform...")
 
-PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
-    vol.Required(CONF_NAME): vol.All(str),
-    vol.Required("region"): vol.All(str),
-    vol.Required("search_station"): vol.All(str),
-})
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the Elektro Celje sensor."""
-    
-    platform_name = "elektro_celje"
+async def async_setup_platform(
+    hass: HomeAssistant,
+    config: ConfigType,
+    async_add_entities: AddEntitiesCallback,
+    discovery_info: DiscoveryInfoType | None = None,
+) -> None:
+    """Import a YAML sensor as a config entry and tell the user to remove it."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        "deprecated_yaml",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="deprecated_yaml",
+    )
+    name = str(config.get(CONF_NAME) or "").strip()
+    station = str(config.get("search_station") or "").strip()
+    if not name or not station:
+        _LOGGER.warning(
+            "Skipping a YAML sensor of %s: name and search_station are required",
+            DOMAIN,
+        )
+        return
+    region = normalize(str(config.get(CONF_REGION, ""))).replace(" ", "-")
+    await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_IMPORT},
+        data={
+            CONF_NAME: name,
+            CONF_REGION: region if region in REGIONS else ALL_REGIONS,
+            CONF_STATION: station,
+        },
+    )
 
-    _LOGGER.info("Setting up Elektro Celje binary sensor platform...")
 
-    name = config.get(CONF_NAME, "Elektro Celje Sensor")
-    region = config.get(CONF_REGION, "unknown")
-    search_station = config.get("search_station", "unknown")
-    unique_id = f"elektro_celje_{name.lower().replace(' ', '_')}_{region.lower()}"
-    
-    # Create an instance of ElektroCeljeParser
-    elektro_celje_parser = ElektroCeljeParser(region)
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ElektroCeljeConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
+    """Set up the binary sensors of one location."""
+    coordinator = entry.runtime_data
+    async_add_entities(
+        [
+            OutagePlannedSensor(coordinator, entry, "outage_planned"),
+            OutageNowSensor(coordinator, entry, "outage_now"),
+            FeedProblemSensor(coordinator, entry, "feed_problem"),
+        ]
+    )
 
-    # Initialize the sensor and fetch data
-    sensor = ElektroCeljeSensor(name, unique_id, region, search_station, elektro_celje_parser)
-    await sensor.async_update()
 
-    async_add_entities([sensor], update_before_add=True)
+class OutagePlannedSensor(ElektroCeljeEntity, BinarySensorEntity):
+    """On when at least one outage is planned."""
 
-    # Log the configuration information
-    _LOGGER.info(f"Config for Elektro Celje sensor: {config}")
-
-class ElektroCeljeSensor(BinarySensorEntity):
-    """Representation of a Elektro Celje sensor."""
-
-    def __init__(self, name, unique_id, region, search_station, elektro_celje_parser):
-        """Initialize the binary sensor."""
-        self._name = name
-        self._state = False
-        self._unique_id = unique_id
-        self._region = region
-        self._search_station = search_station
-        self._elektro_celje_parser = elektro_celje_parser
-        self._attr_last_changed = None 
-        self._published_date = None
-        self._working_date = None
-        self._start_date = None
-        self._end_date = None
-        self._description = None
-        self._scan_interval = SCAN_INTERVAL
-
-    @property
-    def name(self):
-        """Return the name of the sensor."""
-        return self._name
-
-    @property
-    def unique_id(self):
-        """Return a unique ID to use for this binary sensor."""
-        return self._unique_id
+    _unrecorded_attributes = frozenset({"outages", "feed_urls", "last_success"})
 
     @property
-    def is_on(self):
-        """Return the state of the binary sensor."""
-        return self._state
+    def is_on(self) -> bool:
+        """Return True if an outage is planned."""
+        return len(self.data.planned) > 0
 
     @property
-    def device_class(self):
-        """Return the device class of the binary sensor."""
-        return BinarySensorDeviceClass.PROBLEM
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the debug attributes."""
+        return debug_attributes(self.data)
+
+
+class OutageNowSensor(ElektroCeljeEntity, BinarySensorEntity):
+    """On while the power is off."""
 
     @property
-    def icon(self):
-        """Return the icon to be shown for the binary sensor."""
-        if self.is_on:
-            return "mdi:transmission-tower-off"  # Icon for True state
-        else:
-            return "mdi:transmission-tower"  # Icon for False state
+    def is_on(self) -> bool:
+        """Return True if an outage is active now."""
+        now = dt_util.utcnow()
+        return any(is_active(o, now) for o in self.data.planned)
+
+
+class FeedProblemSensor(ElektroCeljeEntity, BinarySensorEntity):
+    """On when a feed cannot be read."""
+
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     @property
-    def extra_state_attributes(self):
-        """Return the state attributes."""
-        return {
-            "region": self._region,
-            "search_station": self._search_station,
-            "last_changed": self._attr_last_changed,
-            "published_date": self._published_date,
-            "working_date": self._working_date,
-            "start_date": self._start_date,
-            "end_date": self._end_date,
-            "description": self._description,
-        }
+    def is_on(self) -> bool:
+        """Return True if a feed has a problem."""
+        return not self.data.feed_ok
 
-    async def async_update(self, time_between_updates=None):
-        """Update the binary sensor."""
-        if self.hass is None:
-            _LOGGER.info("Home Assistant object is not available. Skipping update.")
-            return
-
-        try:
-            # Fetch data using ElektroCeljeParser
-            elektro_celje_data = await self.hass.async_add_executor_job(self._elektro_celje_parser.fetch_data, self._search_station)
-
-            # Set state based on the result
-            self._state = elektro_celje_data.success
-
-            # Update attributes
-            self._published_date = elektro_celje_data.published_date
-            self._working_date = elektro_celje_data.working_date
-            self._start_date = elektro_celje_data.start_date
-            self._end_date = elektro_celje_data.end_date
-            self._description = elektro_celje_data.description
-
-            # Update last changed timestamp
-            self._attr_last_changed = self.hass.states.get(self.entity_id).last_changed
-
-            # Set icon dynamically based on the state
-            if self._state:
-                self._attr_icon = "mdi:transmission-tower-off"
-            else:
-                self._attr_icon = "mdi:transmission-tower"
-
-            # Log the update action
-            _LOGGER.debug(f"Updated {self.name} binary sensor state to {self.is_on}")
-
-            # Log the last changed timestamp
-            _LOGGER.debug(f"{self.name} last changed: {self._attr_last_changed}")
-
-        except Exception as e:
-            _LOGGER.error(f"Error updating {self.name} binary sensor: {e}")
-
-    async def async_remove(self):
-        """Remove the entity."""
-        _LOGGER.info(f"Removing {self.name} binary sensor")
-
-        # Clean up resources, if any
-        # ...
-
-        # Call the parent class's async_remove method
-        await super().async_remove()
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Return the time when the problem began."""
+        since = self.data.problem_since
+        return {"problem_since": since.isoformat() if since else None}
