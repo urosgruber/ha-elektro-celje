@@ -156,6 +156,9 @@ content: |
     {%- elif d == 1 -%}{{ L.in_tomorrow }}
     {%- else -%}{{ L.in_days.format(n=d) }}{%- endif -%}
   {%- endmacro -%}
+  {%- macro clock(i) -%}
+    {%- if i.all_day -%}{{ L.all_day }}{%- else -%}{{ i.s.strftime('%H:%M') }}–{{ i.e.strftime('%H:%M') if i.e else '?' }}{%- endif -%}
+  {%- endmacro -%}
   {%- macro span(i) -%}
     {%- if i.s is none -%}{{ L.unknown_time }}
     {%- elif i.all_day -%}{{ L.all_day }}
@@ -209,7 +212,7 @@ content: |
   {%- if ns.problem %}
 
   <ha-alert alert-type="info" title="⚠ {{ L.feed_error }}">
-  {{ L.last_good }}: {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') if ns.oldest else '–' }} · {{ L.list_old }}
+  {{ L.last_good }}: {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') if ns.oldest else '–' }} · {{ L.problem_since }} {{ ns.problem.strftime('%a %-d %b, %H:%M') }} · {{ L.list_old }}
   </ha-alert>
   {% endif -%}
   {%- if banner >= 0 -%}
@@ -217,13 +220,13 @@ content: |
   {%- if live %}
 
   <ha-alert alert-type="error" title="🔌 {{ L.now }} · {{ b.loc }}">
-  {{ b.s.strftime('%H:%M') }}–{{ b.e.strftime('%H:%M') }} · {{ L.ends_in }} {{ dur(((b.e - now_).total_seconds() // 60) | int) }}
+  {{ clock(b) }} · {{ L.ends_in }} {{ dur(((b.e - now_).total_seconds() // 60) | int) }}
   </ha-alert>
   {% else %}
   {%- set d = daydiff(b.s)|int if b.s else 0 %}
 
-  <ha-alert alert-type="warning" title="⚡ {{ (L.today ~ ', ') if d == 0 and b.s else (L.tomorrow ~ ', ') if d == 1 and b.s else '' }}{{ b.s.strftime('%a %-d %b') if b.s else L.unknown_day }} · {{ span(b) if not b.s else b.s.strftime('%H:%M') ~ '–' ~ (b.e.strftime('%H:%M') if b.e else '?') }}">
-  {{ b.loc }}{% if b.s and b.e %} · {{ dur(((b.e - b.s).total_seconds() // 60) | int) }}{% endif %}{% if b.s %} · {{ L.in_day if d == 1 else rel(d) }}{% else %} · {{ b.text }}{% endif %}
+  <ha-alert alert-type="warning" title="⚡ {{ (L.today ~ ', ') if d == 0 and b.s else (L.tomorrow ~ ', ') if d == 1 and b.s else '' }}{{ b.s.strftime('%a %-d %b') if b.s else L.unknown_day }} · {{ span(b) if not b.s else clock(b) }}">
+  {{ b.loc }}{% if b.s and b.e and not b.all_day %} · {{ dur(((b.e - b.s).total_seconds() // 60) | int) }}{% endif %}{% if b.s %} · {{ L.in_day if d == 1 else rel(d) }}{% else %} · {{ b.text }}{% endif %}
   </ha-alert>
   {% endif -%}
   {%- endif -%}
@@ -244,10 +247,8 @@ content: |
   {%- endif -%}
   {% endfor %}
 
-  {% if ns.oldest and not ns.problem -%}
+  {% if ns.oldest -%}
   *{{ L.checked }} {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*
-  {%- elif ns.problem -%}
-  *{{ L.problem_since }} {{ ns.problem.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*
   {%- endif %}
   {%- endif %}
 ```
@@ -267,6 +268,12 @@ Update your automations and dashboards to the new entities.
 If a problem lasts, open the diagnostics of the integration. Then open an
 issue on GitHub. The `binary_sensor.<location>_feed_problem` entity shows
 when a feed cannot be read.
+
+The diagnostics file redacts the location name, the station query and the
+matched notices. It is safe to attach to an issue.
+
+Do not paste raw entity states or the `outages` attribute into a public
+issue. They contain your station name.
 
 ## Contributing
 

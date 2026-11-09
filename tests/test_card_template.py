@@ -1,6 +1,6 @@
 """Tests of the dashboard card template."""
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from homeassistant.core import HomeAssistant
@@ -129,7 +129,7 @@ async def test_three_outages(hass: HomeAssistant) -> None:
     )
     text = await _render(hass)
     assert "Also planned" in text
-    assert text.count("08:30–11:00") == 1
+    assert text.rsplit("Checked", 1)[0].count("08:30") == 1
     assert "08:00 – 14:00 · 6 h" in text
     assert "08:00 – 10:00 · 2 h" in text
 
@@ -141,6 +141,7 @@ async def test_outage_now(hass: HomeAssistant) -> None:
     _set_states(hass, [_outage(start, 2.0), _outage(_day(2, 8))])
     text = await _render(hass)
     assert "Outage now" in text
+    assert 'alert-type="error"' in text
     assert "ends in" in text
     assert "Also planned" in text
 
@@ -177,3 +178,35 @@ async def test_feed_problem_without_outages(hass: HomeAssistant) -> None:
     text = await _render(hass)
     assert "Cannot read the Elektro Celje feed" in text
     assert "Also planned" not in text
+    assert "Checked" in text
+
+
+async def test_all_day_outage(hass: HomeAssistant) -> None:
+    """An all-day outage shows the all-day text and no clock time."""
+    await _setup(hass)
+    start = _day(1, 0)
+    outage = _outage(start, 24)
+    outage.update(all_day=True, status="date_only")
+    _set_states(hass, [outage])
+    text = await _render(hass)
+    assert "all day" in text
+    assert "00:00" not in text.rsplit("Checked", 1)[0]
+    assert "24 h" not in text
+
+
+async def test_utc_outage_is_shown_in_local_time(hass: HomeAssistant) -> None:
+    """An outage in UTC near midnight shows the local date and time."""
+    await _setup(hass)
+    local = _day(2, 0, 30)
+    utc = local.astimezone(UTC)
+    _set_states(hass, [_outage(utc, 1.0)])
+    text = await _render(hass)
+    assert "00:30–01:30" in text
+    assert local.strftime("%a %-d %b") in text
+
+
+def test_readme_card_matches_file() -> None:
+    """The card in the README equals docs/dashboard-card.yaml."""
+    readme = Path("README.md").read_text()
+    block = readme.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+    assert block == CARD.read_text().rstrip("\n")
