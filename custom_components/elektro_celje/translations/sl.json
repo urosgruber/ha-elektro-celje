@@ -1,0 +1,76 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dodaj lokacijo",
+        "description": "Vnesite ime, izberite regijo in izberite ime transformatorske postaje, kot ga zapišejo obvestila.",
+        "data": {
+          "name": "Ime",
+          "region": "Regija",
+          "station": "Postaja"
+        },
+        "data_description": {
+          "name": "Ime lokacije, na primer Doma.",
+          "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
+          "station": "Izberite ime s seznama ali ga vpišite. Ujemanje ne razlikuje velikih črk in naglasov."
+        }
+      },
+      "reconfigure": {
+        "title": "Spremeni lokacijo",
+        "description": "Spremenite ime, regijo ali postajo. Shranjena zgodovina opozoril te lokacije se izbriše.",
+        "data": {
+          "name": "Ime",
+          "region": "Regija",
+          "station": "Postaja"
+        },
+        "data_description": {
+          "name": "Ime lokacije, na primer Doma.",
+          "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
+          "station": "Izberite ime s seznama ali ga vpišite. Ujemanje ne razlikuje velikih črk in naglasov."
+        }
+      },
+      "confirm": {
+        "title": "Preverite lokacijo",
+        "description": "Načrtovani izklopi za to postajo zdaj:\n\n{matches}\n\nZa shranjevanje lokacije izberite Pošlji."
+      }
+    },
+    "error": {
+      "station_required": "Vnesite ime postaje.",
+      "name_required": "Vnesite ime."
+    },
+    "abort": {
+      "already_configured": "Ta regija in postaja sta že nastavljeni.",
+      "reconfigure_successful": "Lokacija je spremenjena.",
+      "invalid_import": "Uvožena lokacija ni veljavna."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Možnosti",
+        "data": {
+          "reminder_time": "Ura opomnika"
+        },
+        "data_description": {
+          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan."
+        }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "Vse regije",
+        "celje": "Celje",
+        "velenje": "Velenje",
+        "krsko": "Krško",
+        "slovenj-gradec": "Slovenj Gradec"
+      }
+    }
+  },
+  "exceptions": {
+    "no_planned_outage": {
+      "message": "Za to postajo zdaj ni načrtovanega izklopa. To je običajno."
+    }
+  }
+}

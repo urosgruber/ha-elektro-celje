@@ -1,15 +1,264 @@
-"""Config flow for Elektro Celje.
+"""Config flow for Elektro Celje: add, check and reconfigure a location."""
 
-This is a placeholder so that Home Assistant can load config entries. The
-setup form, the preview, reconfigure and the options arrive in a later task.
-"""
+from __future__ import annotations
 
-from homeassistant.config_entries import ConfigFlow
+import asyncio
+import logging
+from collections.abc import Mapping
+from typing import Any
 
-from .const import DOMAIN
+import voluptuous as vol
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import (
+    SelectSelector,
+    SelectSelectorConfig,
+    SelectSelectorMode,
+    TextSelector,
+    TimeSelector,
+)
+from homeassistant.helpers.translation import async_get_translations
+
+from .client import FeedError, async_fetch_feed
+from .const import (
+    ALL_REGIONS,
+    CONF_REGION,
+    CONF_REMINDER_TIME,
+    CONF_STATION,
+    DEFAULT_REMINDER_TIME,
+    DOMAIN,
+    REGIONS,
+)
+from .location import async_clear_alert_state
+from .matching import matches
+from .models import Notice
+from .parser import FeedFormatError, normalize, parse_feed
+
+_LOGGER = logging.getLogger(__name__)
+
+CONF_NAME = "name"
+NO_MATCH_TEXT = "No planned outage for this station now. This is normal."
+
+
+def _region_slugs(region: str) -> list[str]:
+    return list(REGIONS) if region == ALL_REGIONS else [region]
+
+
+async def _async_notices(hass: HomeAssistant, region: str) -> list[Notice]:
+    """Download the notices of the region now. A failed feed adds no notices."""
+    session = async_get_clientsession(hass)
+    slugs = _region_slugs(region)
+    results = await asyncio.gather(
+        *(async_fetch_feed(session, slug) for slug in slugs),
+        return_exceptions=True,
+    )
+    notices: list[Notice] = []
+    for slug, result in zip(slugs, results, strict=True):
+        if isinstance(result, BaseException):
+            if not isinstance(result, FeedError):
+                raise result
+            _LOGGER.debug("Feed %s is not available: %s", slug, result)
+            continue
+        try:
+            notices.extend(parse_feed(result, slug))
+        except FeedFormatError as err:
+            _LOGGER.debug("Feed %s is not valid: %s", slug, err)
+    return notices
+
+
+def _station_options(notices: list[Notice]) -> list[str]:
+    names: dict[str, str] = {}
+    for notice in notices:
+        for name in notice.station_names:
+            names.setdefault(normalize(name), name)
+    return sorted(names.values(), key=normalize)
+
+
+def _schema(stations: list[str], defaults: Mapping[str, Any]) -> vol.Schema:
+    return vol.Schema(
+        {
+            vol.Required(
+                CONF_NAME, default=defaults.get(CONF_NAME, vol.UNDEFINED)
+            ): TextSelector(),
+            vol.Required(
+                CONF_REGION, default=defaults.get(CONF_REGION, ALL_REGIONS)
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=[ALL_REGIONS, *REGIONS],
+                    mode=SelectSelectorMode.DROPDOWN,
+                    translation_key=CONF_REGION,
+                )
+            ),
+            vol.Required(
+                CONF_STATION, default=defaults.get(CONF_STATION, vol.UNDEFINED)
+            ): SelectSelector(
+                SelectSelectorConfig(
+                    options=stations,
+                    custom_value=True,
+                    mode=SelectSelectorMode.DROPDOWN,
+                )
+            ),
+        }
+    )
+
+
+def unique_id_for(region: str, station: str) -> str:
+    """Return the unique ID of a location."""
+    return f"{region}:{normalize(station)}"
 
 
 class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the setup of one location."""
 
     VERSION = 1
+
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> ElektroCeljeOptionsFlow:
+        """Return the options flow."""
+        return ElektroCeljeOptionsFlow()
+
+    async def async_step_user(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the name, the region and the station."""
+        return await self._async_form_step("user", user_input, ALL_REGIONS, {})
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the region or the station of a location."""
+        entry = self._get_reconfigure_entry()
+        return await self._async_form_step(
+            "reconfigure", user_input, entry.data[CONF_REGION], dict(entry.data)
+        )
+
+    async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
+        """Create a location from imported data, without the confirm step."""
+        data = {
+            CONF_NAME: str(import_data[CONF_NAME]).strip(),
+            CONF_REGION: import_data[CONF_REGION],
+            CONF_STATION: str(import_data[CONF_STATION]).strip(),
+        }
+        if (
+            not data[CONF_NAME]
+            or not data[CONF_STATION]
+            or data[CONF_REGION] not in (ALL_REGIONS, *REGIONS)
+        ):
+            return self.async_abort(reason="invalid_import")
+        await self.async_set_unique_id(
+            unique_id_for(data[CONF_REGION], data[CONF_STATION])
+        )
+        self._abort_if_unique_id_configured()
+        return self.async_create_entry(title=data[CONF_NAME], data=data)
+
+    async def _async_form_step(
+        self,
+        step_id: str,
+        user_input: dict[str, Any] | None,
+        suggestion_region: str,
+        defaults: Mapping[str, Any],
+    ) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            name = user_input[CONF_NAME].strip()
+            station = user_input[CONF_STATION].strip()
+            if not name:
+                errors[CONF_NAME] = "name_required"
+            if not station:
+                errors[CONF_STATION] = "station_required"
+            if not errors:
+                region = user_input[CONF_REGION]
+                await self.async_set_unique_id(unique_id_for(region, station))
+                self._abort_if_unique_id_configured()
+                self._data = {
+                    CONF_NAME: name,
+                    CONF_REGION: region,
+                    CONF_STATION: station,
+                }
+                return await self.async_step_confirm()
+            defaults = user_input
+            suggestion_region = user_input.get(CONF_REGION, suggestion_region)
+        stations = _station_options(await _async_notices(self.hass, suggestion_region))
+        return self.async_show_form(
+            step_id=step_id,
+            data_schema=_schema(stations, defaults),
+            errors=errors,
+        )
+
+    async def async_step_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Show the planned outages that match now, then save."""
+        if user_input is not None:
+            if self.source == "reconfigure":
+                return await self._async_save_reconfigure()
+            return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
+        notices = [
+            notice
+            for notice in await _async_notices(self.hass, self._data[CONF_REGION])
+            if matches(self._data[CONF_STATION], notice)
+        ]
+        if notices:
+            text = "\n".join(
+                f"- {' / '.join(notice.date_texts)}: "
+                f"{notice.station_text or ''} ({REGIONS[notice.region]})"
+                for notice in notices
+            )
+        else:
+            text = await self._async_no_match_text()
+        return self.async_show_form(
+            step_id="confirm", description_placeholders={"matches": text}
+        )
+
+    async def _async_no_match_text(self) -> str:
+        key = f"component.{DOMAIN}.exceptions.no_planned_outage.message"
+        translations = await async_get_translations(
+            self.hass, self.hass.config.language, "exceptions", [DOMAIN]
+        )
+        return translations.get(key, NO_MATCH_TEXT)
+
+    async def _async_save_reconfigure(self) -> ConfigFlowResult:
+        entry = self._get_reconfigure_entry()
+        self.hass.config_entries.async_update_entry(
+            entry,
+            title=self._data[CONF_NAME],
+            data=self._data,
+            unique_id=unique_id_for(self._data[CONF_REGION], self._data[CONF_STATION]),
+        )
+        # The old records belong to the old station. Drop them while the entry is
+        # unloaded, so the new setup cannot report them as removed.
+        await self.hass.config_entries.async_unload(entry.entry_id)
+        await async_clear_alert_state(self.hass, entry.entry_id)
+        await self.hass.config_entries.async_setup(entry.entry_id)
+        return self.async_abort(reason="reconfigure_successful")
+
+
+class ElektroCeljeOptionsFlow(OptionsFlow):
+    """Change the reminder time."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the reminder time."""
+        if user_input is not None:
+            return self.async_create_entry(data=user_input)
+        current = self.config_entry.options.get(
+            CONF_REMINDER_TIME, DEFAULT_REMINDER_TIME.isoformat()
+        )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_REMINDER_TIME, default=current): TimeSelector(),
+                }
+            ),
+        )

@@ -1,0 +1,76 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a location",
+        "description": "Enter a name, choose a region and choose the station (transformer station) name as the notices write it.",
+        "data": {
+          "name": "Name",
+          "region": "Region",
+          "station": "Station"
+        },
+        "data_description": {
+          "name": "The name of the location, for example Home.",
+          "region": "The region feed to watch. Choose All regions if you are not sure.",
+          "station": "Choose a name from the list, or type it. The match ignores case and accents."
+        }
+      },
+      "reconfigure": {
+        "title": "Change the location",
+        "description": "Change the name, the region or the station. The stored alert history of this location is cleared.",
+        "data": {
+          "name": "Name",
+          "region": "Region",
+          "station": "Station"
+        },
+        "data_description": {
+          "name": "The name of the location, for example Home.",
+          "region": "The region feed to watch. Choose All regions if you are not sure.",
+          "station": "Choose a name from the list, or type it. The match ignores case and accents."
+        }
+      },
+      "confirm": {
+        "title": "Check the location",
+        "description": "Planned outages for this station now:\n\n{matches}\n\nSelect Submit to save the location."
+      }
+    },
+    "error": {
+      "station_required": "Enter a station name.",
+      "name_required": "Enter a name."
+    },
+    "abort": {
+      "already_configured": "This region and station are already set up.",
+      "reconfigure_successful": "The location is changed.",
+      "invalid_import": "The imported location is not valid."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "reminder_time": "Reminder time"
+        },
+        "data_description": {
+          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day."
+        }
+      }
+    }
+  },
+  "selector": {
+    "region": {
+      "options": {
+        "all": "All regions",
+        "celje": "Celje",
+        "velenje": "Velenje",
+        "krsko": "Krško",
+        "slovenj-gradec": "Slovenj Gradec"
+      }
+    }
+  },
+  "exceptions": {
+    "no_planned_outage": {
+      "message": "No planned outage for this station now. This is normal."
+    }
+  }
+}

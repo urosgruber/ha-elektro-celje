@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import ALL_REGIONS, CONF_REGION, REGIONS
 from .coordinator import RegionCoordinator, async_acquire_region, async_release_region
-from .location import LocationCoordinator
+from .location import LocationCoordinator, reminder_time
 
 type ElektroCeljeConfigEntry = ConfigEntry[LocationCoordinator]
 
@@ -63,5 +63,11 @@ async def async_unload_entry(
 async def _async_update_listener(
     hass: HomeAssistant, entry: ElektroCeljeConfigEntry
 ) -> None:
-    """Reload the entry when the options change."""
+    """Reload the entry when the reminder time changes.
+
+    Other updates, such as a reconfigure, reload the entry themselves.
+    """
+    coordinator = getattr(entry, "runtime_data", None)
+    if coordinator is None or coordinator.reminder == reminder_time(entry):
+        return
     await hass.config_entries.async_reload(entry.entry_id)

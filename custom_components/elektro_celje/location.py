@@ -118,6 +118,7 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         self._store = _store(hass, entry.entry_id)
         self._records: dict[str, OutageRecord] = {}
         self._lock = asyncio.Lock()
+        self._closed = False
         self._unsub_timer: CALLBACK_TYPE | None = None
         self._unsub_regions: list[CALLBACK_TYPE] = []
 
@@ -157,34 +158,47 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
     async def _async_update_data(self) -> LocationData:
         async with self._lock:
             now = dt_util.utcnow()
-            notices = [
-                notice
-                for region in self.regions
-                if region.data is not None
-                for notice in region.data.notices
-            ]
-            outages = build_outages(notices, self.query)
-            ok_regions = {r.region for r in self.regions if _region_ok(r)}
-            events, records = evaluate(
-                self._records, outages, now, ok_regions, self.reminder
-            )
-            self._records = records
-            # Save before firing, so a crash between them cannot fire again.
-            await self._store.async_save(
-                {"records": [r.to_dict() for r in records.values()]}
-            )
-            location = self.config_entry.title
-            entry_id = self.config_entry.entry_id
-            for event in events:
-                self.hass.bus.async_fire(
-                    event_type(event.kind), event_payload(event, location, entry_id)
+            try:
+                notices = [
+                    notice
+                    for region in self.regions
+                    if region.data is not None
+                    for notice in region.data.notices
+                ]
+                outages = build_outages(notices, self.query)
+                ok_regions = {r.region for r in self.regions if _region_ok(r)}
+                events, records = evaluate(
+                    self._records, outages, now, ok_regions, self.reminder
                 )
-            planned = sorted(
-                (_to_outage(r) for r in records.values() if is_planned(r, now)),
-                key=_sort_key,
-            )
-            self._schedule_boundary(planned, now)
-            return self._location_data(outages, planned, records)
+                self._records = records
+                if self._closed:
+                    # Shut down: another refresh owns the store now.
+                    events = []
+                else:
+                    # Save before firing, so a crash between them cannot fire again.
+                    await self._store.async_save(
+                        {"records": [r.to_dict() for r in records.values()]}
+                    )
+                location = self.config_entry.title
+                entry_id = self.config_entry.entry_id
+                for event in events:
+                    self.hass.bus.async_fire(
+                        event_type(event.kind),
+                        event_payload(event, location, entry_id),
+                    )
+                return self._location_data(
+                    outages, self._planned(records, now), records
+                )
+            finally:
+                # A failed run still schedules the next boundary.
+                self._schedule_boundary(self._planned(self._records, now), now)
+
+    @staticmethod
+    def _planned(records: dict[str, OutageRecord], now: datetime) -> list[Outage]:
+        return sorted(
+            (_to_outage(r) for r in records.values() if is_planned(r, now)),
+            key=_sort_key,
+        )
 
     def _location_data(
         self,
@@ -218,8 +232,13 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         )
 
     async def async_shutdown(self) -> None:
-        """Stop the timer and the region listeners."""
+        """Stop the timer and the region listeners.
+
+        Wait for a refresh in flight, then block the Store save and the events.
+        """
         await super().async_shutdown()
+        async with self._lock:
+            self._closed = True
         if self._unsub_timer is not None:
             self._unsub_timer()
             self._unsub_timer = None

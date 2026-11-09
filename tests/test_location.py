@@ -1,7 +1,9 @@
 """Tests for the location coordinator and the integration setup."""
 
+import asyncio
 from datetime import datetime, time, timedelta
 from pathlib import Path
+from unittest.mock import patch
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import Event, HomeAssistant, callback
@@ -385,3 +387,54 @@ async def test_options_change_reloads_entry(
     assert entry.runtime_data is not first
     assert entry.runtime_data.reminder == time(19, 15)
     await _unload(hass, entry)
+
+
+async def test_failed_evaluation_still_arms_boundary_timer(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    coordinator = await _setup(hass, _entry())
+    assert coordinator._unsub_timer is not None
+    coordinator._unsub_timer()
+    coordinator._unsub_timer = None
+
+    with patch(
+        "custom_components.elektro_celje.location.evaluate",
+        side_effect=RuntimeError("boom"),
+    ):
+        await coordinator.async_refresh()
+
+    assert coordinator._unsub_timer is not None
+
+
+async def test_no_save_or_event_after_shutdown(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    coordinator = await _setup(hass, _entry())
+    detected = async_capture_events(hass, EVENT_OUTAGE_DETECTED)
+    coordinator._records.clear()
+
+    await coordinator.async_shutdown()
+    with patch.object(coordinator._store, "async_save") as save:
+        await coordinator._async_update_data()
+
+    save.assert_not_called()
+    assert detected == []
+    assert coordinator._unsub_timer is None
+
+
+async def test_shutdown_waits_for_refresh_in_flight(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    coordinator = await _setup(hass, _entry())
+    await coordinator._lock.acquire()
+    shutdown = hass.async_create_task(coordinator.async_shutdown())
+    await asyncio.sleep(0)
+    assert not shutdown.done()
+    coordinator._lock.release()
+    await shutdown
