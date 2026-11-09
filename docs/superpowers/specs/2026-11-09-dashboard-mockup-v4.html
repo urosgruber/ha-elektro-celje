@@ -1,0 +1,64 @@
+<style>
+  .card{background:#1c1f24;color:#e6e6e6;border-radius:12px;padding:14px 16px;font-family:system-ui,sans-serif;font-size:14px}
+  .day{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#9aa3ad;margin:12px 0 6px}
+  .row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;background:#262a31;margin-bottom:6px}
+  .row .loc{font-weight:600;min-width:110px}
+  .row .time{flex:1;color:#cfd6dd}
+  .chip{font-size:12px;padding:2px 8px;border-radius:999px;background:#3a2f12;color:#f5c04a;white-space:nowrap}
+  .muted{color:#8a929b;font-size:12px;margin-top:8px}
+  .banner{border-radius:10px;padding:10px 12px;margin-bottom:6px;font-weight:600}
+  .banner.warn{background:#3a2f12;color:#f5c04a}
+  .banner.live{background:#e0533f;color:#fff}
+  .banner.err{background:#2b2f36;color:#c9cfd6;font-weight:500}
+  .banner small{display:block;font-weight:400;opacity:.85;margin-top:2px}
+  .hidden{border:2px dashed #3a3f47;border-radius:12px;padding:30px 16px;text-align:center;color:#7d858e;font-family:system-ui,sans-serif;font-size:13px}
+  .states{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:18px}
+  .states h3{margin:0 0 8px}
+  .sec{font-size:12px;color:#9aa3ad;margin:14px 0 2px;border-top:1px solid #2c3036;padding-top:10px}
+</style>
+
+<h2>Version 4 · Full date on every check time</h2>
+<p class="subtitle">Rule: the banner shows one outage (the current one, or the next one). The list below shows only the other outages, under "Also planned". Example data.</p>
+
+<div class="states">
+
+  <div>
+    <h3>1 · Nothing planned</h3>
+    <div class="hidden">The card is hidden.</div>
+  </div>
+
+  <div>
+    <h3>2 · Outages planned</h3>
+    <div class="card">
+      <div class="banner warn">⚡ Tomorrow, Tue 10 Nov · 08:30–11:00<small>TP Zabukovica · 2 h 30 min · in 1 day</small></div>
+      <div class="sec">Also planned</div>
+      <div class="day">Thu 12 Nov</div>
+      <div class="row"><span class="loc">TP Lopata</span><span class="time">08:00 – 14:00 · 6 h</span><span class="chip">in 3 days</span></div>
+      <div class="day">Fri 13 Nov</div>
+      <div class="row"><span class="loc">TP Lopata</span><span class="time">08:00 – 10:00 · 2 h</span><span class="chip">in 4 days</span></div>
+      <div class="muted">Checked Mon 9 Nov 2026, 16:23 · elektro-celje.si</div>
+    </div>
+  </div>
+
+  <div>
+    <h3>3 · Outage happening now</h3>
+    <div class="card">
+      <div class="banner live">🔌 Outage now · TP Zabukovica<small>08:30–11:00 · ends in 1 h 12 min</small></div>
+      <div class="sec">Also planned</div>
+      <div class="day">Thu 12 Nov</div>
+      <div class="row"><span class="loc">TP Lopata</span><span class="time">08:00 – 14:00 · 6 h</span><span class="chip">in 2 days</span></div>
+      <div class="muted">Checked Tue 10 Nov 2026, 09:48 · elektro-celje.si</div>
+    </div>
+  </div>
+
+  <div>
+    <h3>4 · Feed cannot be read</h3>
+    <div class="card">
+      <div class="banner err">⚠ Cannot read the Elektro Celje feed<small>Last good check: Mon 9 Nov 2026, 12:23 · the list below may be old</small></div>
+      <div class="day">Thu 12 Nov</div>
+      <div class="row"><span class="loc">TP Lopata</span><span class="time">08:00 – 14:00 · 6 h</span><span class="chip">in 3 days</span></div>
+      <div class="muted">Last attempt Mon 9 Nov 2026, 16:23 failed: timeout</div>
+    </div>
+  </div>
+
+</div>
