@@ -5,8 +5,9 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import SOURCE_IMPORT, ConfigEntryState
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -14,6 +15,7 @@ from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
 )
 
+from custom_components.elektro_celje.binary_sensor import async_setup_platform
 from custom_components.elektro_celje.const import (
     CONF_REGION,
     CONF_STATION,
@@ -77,8 +79,30 @@ async def test_yaml_import_creates_entries(hass: HomeAssistant) -> None:
 
 async def test_yaml_import_twice_is_idempotent(hass: HomeAssistant) -> None:
     await _import(hass, *_owner())
-    await _import(hass, *_owner())
+    data = {"name": "TP Zabukovica", "region": "velenje", "station": "zabukovica papež"}
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_IMPORT}, data=data
+    )
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "already_configured"
+    # The platform function itself, called a second time for both sensors.
+    for sensor in _owner():
+        await async_setup_platform(hass, sensor, lambda *_: None)
+    await hass.async_block_till_done()
     assert len(hass.config_entries.async_entries(DOMAIN)) == 2
+    assert ir.async_get(hass).async_get_issue(DOMAIN, "deprecated_yaml")
+
+
+async def test_yaml_missing_keys_skip_import(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+) -> None:
+    await _import(
+        hass,
+        {"name": "No station", "region": "celje"},
+        {"name": " ", "region": "celje", "search_station": "abc"},
+    )
+    assert hass.config_entries.async_entries(DOMAIN) == []
+    assert caplog.text.count("Skipping a YAML sensor") == 2
     assert ir.async_get(hass).async_get_issue(DOMAIN, "deprecated_yaml")
 
 

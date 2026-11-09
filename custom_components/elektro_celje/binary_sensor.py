@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -27,6 +28,8 @@ from .parser import normalize
 
 PARALLEL_UPDATES = 0
 
+_LOGGER = logging.getLogger(__name__)
+
 
 async def async_setup_platform(
     hass: HomeAssistant,
@@ -35,16 +38,6 @@ async def async_setup_platform(
     discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Import a YAML sensor as a config entry and tell the user to remove it."""
-    region = normalize(str(config.get(CONF_REGION, ""))).replace(" ", "-")
-    await hass.config_entries.flow.async_init(
-        DOMAIN,
-        context={"source": SOURCE_IMPORT},
-        data={
-            CONF_NAME: config.get(CONF_NAME),
-            CONF_REGION: region if region in REGIONS else ALL_REGIONS,
-            CONF_STATION: config.get("search_station"),
-        },
-    )
     ir.async_create_issue(
         hass,
         DOMAIN,
@@ -52,6 +45,24 @@ async def async_setup_platform(
         is_fixable=False,
         severity=ir.IssueSeverity.WARNING,
         translation_key="deprecated_yaml",
+    )
+    name = str(config.get(CONF_NAME) or "").strip()
+    station = str(config.get("search_station") or "").strip()
+    if not name or not station:
+        _LOGGER.warning(
+            "Skipping a YAML sensor of %s: name and search_station are required",
+            DOMAIN,
+        )
+        return
+    region = normalize(str(config.get(CONF_REGION, ""))).replace(" ", "-")
+    await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={"source": SOURCE_IMPORT},
+        data={
+            CONF_NAME: name,
+            CONF_REGION: region if region in REGIONS else ALL_REGIONS,
+            CONF_STATION: station,
+        },
     )
 
 
