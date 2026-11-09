@@ -155,17 +155,24 @@ const STYLE = `
     margin: 12px 0 6px;
   }
   .row {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: 4px 10px;
+    gap: 2px 10px;
     padding: 8px 10px;
     margin-bottom: 6px;
     border-radius: calc(var(--ha-card-border-radius, 12px) - 4px);
     background: color-mix(in srgb, var(--primary-text-color) 6%, transparent);
   }
-  .row .loc { font-weight: 600; white-space: nowrap; }
-  .row .time { flex: 1 1 auto; white-space: nowrap; }
+  .row .loc { grid-column: 1; grid-row: 1; font-weight: 600; }
+  .row .time {
+    grid-column: 1;
+    grid-row: 2;
+    white-space: nowrap;
+    font-size: 13px;
+    color: var(--secondary-text-color);
+  }
+  .row .chip { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .chip {
     font-size: 12px;
     padding: 2px 8px;
