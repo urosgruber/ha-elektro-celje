@@ -264,3 +264,50 @@ def test_feed_text_is_cleaned() -> None:
     item = _card([failed])["card"][0]
     assert item["detail"] == 'Izklop "A" <b> zaradi del</b>'
     assert item["row"] == 'time unknown · Izklop "A" <b> zaradi del</b>'
+
+
+def test_span_and_chip_english() -> None:
+    """The card shows the time span and a relative-day chip in separate parts."""
+    result = _card(
+        [
+            _o("a", _t(11, 10, 8, 30), _t(11, 10, 11)),
+            _o("b", _t(11, 12, 8), _t(11, 12, 14)),
+            _o("c", _t(11, 13), _t(11, 14), ParseStatus.DATE_ONLY, all_day=True),
+            _o("d", _t(11, 9, 14), _t(11, 9, 16)),
+            _o("f", None, None, ParseStatus.FAILED, text="Notice"),
+        ]
+    )
+    by_row = {i["row"]: i for i in result["card"]}
+    tomorrow = by_row["08:30–11:00 · 2 h 30 min · tomorrow"]
+    assert tomorrow["span"] == "08:30–11:00 · 2 h 30 min"
+    assert tomorrow["chip"] == "tomorrow"
+    later = by_row["08:00–14:00 · 6 h · in 3 days"]
+    assert later["span"] == "08:00–14:00 · 6 h"
+    assert later["chip"] == "in 3 days"
+    all_day = by_row["all day · in 4 days"]
+    assert all_day["span"] == "all day"
+    assert all_day["chip"] == "in 4 days"
+    today = by_row["14:00–16:00 · 2 h · today"]
+    assert today["chip"] == "today"
+    failed = by_row["time unknown · Notice"]
+    assert failed["span"] == "time unknown · Notice"
+    assert failed["chip"] == ""
+
+
+def test_span_and_chip_live_and_ended() -> None:
+    result = _card(
+        [
+            _o("a", _t(11, 9, 11), _t(11, 9, 13)),
+            _o("b", _t(11, 9, 8), _t(11, 9, 10)),
+        ]
+    )
+    live, ended = result["card"]
+    assert (live["span"], live["chip"]) == ("11:00–13:00", "")
+    assert (ended["span"], ended["chip"]) == ("08:00–10:00", "")
+
+
+def test_span_and_chip_slovenian() -> None:
+    result = _card([_o("b", _t(11, 12, 8), _t(11, 12, 14))], lang="sl")
+    item = result["card"][0]
+    assert item["span"] == "08:00–14:00 · 6 h"
+    assert item["chip"] == "čez 3 dni"

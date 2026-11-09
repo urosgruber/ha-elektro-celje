@@ -168,6 +168,8 @@ def _item(
             detail=text,
             day=t["unknown_day"],
             row=f"{t['unknown_time']} · {text}",
+            span=f"{t['unknown_time']} · {text}",
+            chip="",
         )
         return item
     start_day = _local(o.start).date()
@@ -181,10 +183,14 @@ def _item(
             if o.all_day or o.end is None
             else t["until"].format(time=f"{_local(o.end):%H:%M}"),
             row=clock,
+            span=clock,
+            chip="",
         )
         return item
     if group == "ended":
-        item.update(title=f"{clock} · {t['ended']}", detail="", row=clock)
+        item.update(
+            title=f"{clock} · {t['ended']}", detail="", row=clock, span=clock, chip=""
+        )
         return item
     days = (start_day - local_now.date()).days
     if days <= 0:
@@ -199,6 +205,8 @@ def _item(
         title=title,
         detail=" · ".join(p for p in (duration, relative) if p),
         row=" · ".join(p for p in (clock, duration, relative) if p),
+        span=" · ".join(p for p in (clock, duration) if p),
+        chip=relative,
     )
     return item
 
