@@ -55,6 +55,12 @@ TEXTS: dict[str, dict[str, Any]] = {
         "feed_error": "Cannot read the Elektro Celje feed.",
         "last_good": "Last good check: {when}.",
         "list_old": "The list below may be old.",
+        "problem_title": "Cannot read the Elektro Celje feed",
+        "problem_detail": "Last good check: {when} · the list below may be old",
+        "ends_in": "ends in {d}",
+        "hours_minutes": "{h} h {m} min",
+        "hours": "{h} h",
+        "minutes": "{m} min",
     },
     "sl": {
         "weekdays": ["pon", "tor", "sre", "čet", "pet", "sob", "ned"],
@@ -93,6 +99,14 @@ TEXTS: dict[str, dict[str, Any]] = {
         "feed_error": "Podatkov Elektro Celje ni mogoče prebrati.",
         "last_good": "Zadnje uspešno preverjanje: {when}.",
         "list_old": "Spodnji seznam je morda zastarel.",
+        "problem_title": "Podatkov Elektro Celje ni mogoče prebrati",
+        "problem_detail": (
+            "Zadnje uspešno preverjanje: {when} · spodnji seznam je morda zastarel"
+        ),
+        "ends_in": "konča se čez {d}",
+        "hours_minutes": "{h} h {m} min",
+        "hours": "{h} h",
+        "minutes": "{m} min",
     },
 }
 
@@ -168,6 +182,8 @@ def _item(
             detail=text,
             day=t["unknown_day"],
             row=f"{t['unknown_time']} · {text}",
+            span=f"{t['unknown_time']} · {text}",
+            chip="",
         )
         return item
     start_day = _local(o.start).date()
@@ -181,10 +197,16 @@ def _item(
             if o.all_day or o.end is None
             else t["until"].format(time=f"{_local(o.end):%H:%M}"),
             row=clock,
+            span=clock,
+            chip="",
+            # The card counts down to this moment in the browser.
+            end=o.end.astimezone(UTC).isoformat() if o.end else None,
         )
         return item
     if group == "ended":
-        item.update(title=f"{clock} · {t['ended']}", detail="", row=clock)
+        item.update(
+            title=f"{clock} · {t['ended']}", detail="", row=clock, span=clock, chip=""
+        )
         return item
     days = (start_day - local_now.date()).days
     if days <= 0:
@@ -199,6 +221,8 @@ def _item(
         title=title,
         detail=" · ".join(p for p in (duration, relative) if p),
         row=" · ".join(p for p in (clock, duration, relative) if p),
+        span=" · ".join(p for p in (clock, duration) if p),
+        chip=relative,
     )
     return item
 
@@ -230,19 +254,28 @@ def build_card(
         stamp = _date(_local(data.last_success).date(), t, year=True)
         clock = f"{_local(data.last_success):%H:%M}"
         footer = f"{t['checked']} {stamp}, {clock} · elektro-celje.si"
-    problem = None
+    problem = problem_title = problem_detail = None
     since = data.problem_since
     if since and (now - since).total_seconds() > PROBLEM_AFTER_SECONDS:
         when = _when(data.last_success, now, t) if data.last_success else "–"
         problem = (
             f"{t['feed_error']} {t['last_good'].format(when=when)} {t['list_old']}"
         )
+        problem_title = t["problem_title"]
+        problem_detail = t["problem_detail"].format(when=when)
     return {
         "card": items,
         "card_footer": footer,
         "card_problem": problem,
+        "card_problem_title": problem_title,
+        "card_problem_detail": problem_detail,
         "card_labels": {
             "also_planned": t["also_planned"],
             "ended_today": t["ended_today"],
+            "now": t["now"],
+            "ends_in": t["ends_in"],
+            "hours_minutes": t["hours_minutes"],
+            "hours": t["hours"],
+            "minutes": t["minutes"],
         },
     }

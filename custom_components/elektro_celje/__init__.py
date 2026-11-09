@@ -2,17 +2,45 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 
-from .const import ALL_REGIONS, CONF_REGION, REGIONS
+from .const import ALL_REGIONS, CONF_REGION, DOMAIN, REGIONS
 from .coordinator import RegionCoordinator, async_acquire_region, async_release_region
 from .location import LocationCoordinator, async_clear_alert_state, reminder_time
 
 type ElektroCeljeConfigEntry = ConfigEntry[LocationCoordinator]
 
 PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CALENDAR]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+CARD_URL = "/elektro_celje_static"
+CARD_FILE = "elektro-celje-card.js"
+CARD_DIR = Path(__file__).parent / "frontend"
+_CARD_REGISTERED = f"{DOMAIN}_card_registered"
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the dashboard card and load it in the frontend, once."""
+    if hass.data.get(_CARD_REGISTERED):
+        return True
+    hass.data[_CARD_REGISTERED] = True
+    integration = await async_get_integration(hass, DOMAIN)
+    await hass.http.async_register_static_paths(
+        [StaticPathConfig(CARD_URL, str(CARD_DIR), cache_headers=True)]
+    )
+    # The version in the URL makes the browser load the new card after an update.
+    add_extra_js_url(hass, f"{CARD_URL}/{CARD_FILE}?v={integration.version}")
+    return True
 
 
 def _entry_regions(entry: ConfigEntry) -> list[str]:

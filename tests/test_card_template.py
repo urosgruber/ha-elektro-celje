@@ -294,7 +294,16 @@ def test_card_is_short() -> None:
 
 
 def test_readme_card_matches_file() -> None:
-    """The card in the README equals docs/dashboard-card.yaml."""
+    """The Markdown card in the README equals docs/dashboard-card.yaml."""
     readme = Path("README.md").read_text()
-    block = readme.split("```yaml\n", 1)[1].split("\n```", 1)[0]
+    blocks = [b.split("\n```", 1)[0] for b in readme.split("```yaml\n")[1:]]
+    (block,) = [b for b in blocks if b.startswith("type: markdown")]
     assert block == CARD.read_text().rstrip("\n")
+
+
+def test_readme_names_the_custom_card() -> None:
+    """The README adds the custom card first, and the Markdown card as fallback."""
+    readme = Path("README.md").read_text()
+    custom = readme.index("type: custom:elektro-celje-card")
+    assert custom < readme.index("type: markdown")
+    assert "### Markdown card (fallback)" in readme
