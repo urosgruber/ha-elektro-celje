@@ -3,13 +3,16 @@
 from datetime import timedelta
 from pathlib import Path
 
+import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import async_fire_time_changed
 from pytest_homeassistant_custom_component.test_util.aiohttp import (
     AiohttpClientMocker,
 )
 
+from custom_components.elektro_celje.client import FeedError, async_fetch_feed
 from custom_components.elektro_celje.const import DOMAIN, FEED_URL, SCAN_INTERVAL
 from custom_components.elektro_celje.coordinator import (
     async_acquire_region,
@@ -79,13 +82,14 @@ async def test_truncated_xml_is_failure(
     await async_release_region(hass, "velenje")
 
 
-async def test_oversize_body_is_failure(
+async def test_oversize_body_is_rejected_by_size(
     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
 ) -> None:
-    aioclient_mock.get(URL, text="x" * 1_100_000)
-    coordinator = await async_acquire_region(hass, "velenje")
-    assert not coordinator.last_update_success
-    await async_release_region(hass, "velenje")
+    padding = "<!-- " + "x" * 1_100_000 + " -->"
+    body = _feed().replace("<channel>", "<channel>" + padding, 1)
+    aioclient_mock.get(URL, text=body)
+    with pytest.raises(FeedError, match="larger than 1 MB"):
+        await async_fetch_feed(async_get_clientsession(hass), "velenje")
 
 
 async def test_recovery_clears_problem_since(
