@@ -158,6 +158,8 @@ language of Home Assistant is Slovenian. Otherwise they are in English.
 
 - A banner shows the outage that happens now, or else the next outage.
 - Each other outage that happens now has its own red banner.
+- A red banner counts down to the end of the outage, for example
+  "ends in 1 h 12 min". The card updates this text once a minute.
 - **Also planned** lists the other outages, grouped by day. The banner outage
   is not in this list.
 - **Ended today** lists the outages that ended earlier today. The text is
@@ -187,10 +189,11 @@ recorded in the history. Do not use them in automations. Use `outages` and
 
 | Attribute | Meaning |
 |---|---|
-| `card` | A list of ready items. Each has `location`, `group`, `sort`, `title`, `detail`, `day`, `row`, `span` and `chip`. `span` is the time and the length. `chip` is the relative day, for example "in 3 days". The `group` is `live`, `next` or `ended`. |
-| `card_labels` | The headings `also_planned` and `ended_today`. |
+| `card` | A list of ready items. Each has `location`, `group`, `sort`, `title`, `detail`, `day`, `row`, `span` and `chip`. `span` is the time and the length. `chip` is the relative day, for example "in 3 days". The `group` is `live`, `next` or `ended`. A `live` item also has `end`, the end in UTC, so the card can count down. |
+| `card_labels` | The headings `also_planned` and `ended_today`, the text `now`, and the countdown templates `ends_in`, `hours_minutes`, `hours` and `minutes`. |
 | `card_footer` | The text "Checked ..." with the last good check. |
 | `card_problem` | A text when a feed problem lasts more than one hour. Otherwise `null`. |
+| `card_problem_title`, `card_problem_detail` | The same problem in two parts: a title and a short second line. Otherwise `null`. |
 
 All times and dates use `Europe/Ljubljana`. The texts change at each update
 and at local midnight, so "tomorrow" stays right. The card shows the device

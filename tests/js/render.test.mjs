@@ -179,3 +179,57 @@ test("the card renders again only when a state object changes", () => {
   card.hass = { ...h, states: changed.states };
   assert.notEqual(card.shadowRoot.children[1], first);
 });
+
+test("one timer runs while a live outage shows, and it stops after", () => {
+  const timers = new Set();
+  let nextId = 1;
+  const realSet = globalThis.setInterval;
+  const realClear = globalThis.clearInterval;
+  globalThis.setInterval = () => {
+    const id = nextId++;
+    timers.add(id);
+    return id;
+  };
+  globalThis.clearInterval = (id) => timers.delete(id);
+  try {
+    const live = {
+      ...NEXT,
+      group: "live",
+      title: "Outage now · 08:30–11:00",
+      detail: "until 11:00",
+      span: "08:30–11:00",
+      chip: "",
+      end: "2099-01-01T00:00:00+00:00",
+    };
+    const card = new Card();
+    card.setConfig({});
+    card.hass = hass([live]);
+    card.hass = hass([live, LATER]);
+    assert.equal(timers.size, 1);
+    card.disconnectedCallback();
+    assert.equal(timers.size, 0);
+    card.connectedCallback();
+    assert.equal(timers.size, 1);
+    card.hass = hass([NEXT]);
+    assert.equal(timers.size, 0);
+  } finally {
+    globalThis.setInterval = realSet;
+    globalThis.clearInterval = realClear;
+  }
+});
+
+test("the problem banner has a title and a small line", () => {
+  const card = new Card();
+  card.setConfig({});
+  const h = hass([], "Cannot read the Elektro Celje feed. Old.");
+  const attrs = h.states["sensor.dom_planned_outages"].attributes;
+  attrs.card_problem_title = "Cannot read the Elektro Celje feed";
+  attrs.card_problem_detail = "Last good check: today 12:23 · the list below may be old";
+  card.hass = h;
+  const [banner] = card.shadowRoot.find("problem");
+  assert.equal(
+    banner.textContent,
+    "⚠ Cannot read the Elektro Celje feedLast good check: today 12:23 · the list below may be old",
+  );
+  assert.equal(banner.children.at(-1).tagName, "small");
+});

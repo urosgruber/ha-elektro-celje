@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 
-import { buildModel } from "../../custom_components/elektro_celje/frontend/elektro-celje-card.js";
+import { buildModel, formatRemaining } from "../../custom_components/elektro_celje/frontend/elektro-celje-card.js";
 
 const CARD_URL = new URL(
   "../../custom_components/elektro_celje/frontend/elektro-celje-card.js",
@@ -207,7 +207,10 @@ test("a feed problem shows the card even without items", () => {
   const h = hass([{ card: [], problem: "Cannot read the Elektro Celje feed." }]);
   const model = buildModel(h.states, h.entities);
   assert.equal(model.hidden, false);
-  assert.equal(model.problem, "Cannot read the Elektro Celje feed.");
+  assert.deepEqual(model.problem, {
+    title: "Cannot read the Elektro Celje feed.",
+    detail: "",
+  });
   assert.deepEqual(model.banners, []);
 });
 
@@ -232,4 +235,102 @@ test("the card never puts text into innerHTML", () => {
   const source = readFileSync(CARD_URL, "utf-8");
   assert.equal(source.includes("innerHTML"), false);
   assert.equal(source.includes("insertAdjacentHTML"), false);
+});
+
+const LIVE_LABELS = {
+  ...LABELS,
+  now: "Outage now",
+  ends_in: "ends in {d}",
+  hours_minutes: "{h} h {m} min",
+  hours: "{h} h",
+  minutes: "{m} min",
+};
+
+test("formatRemaining counts the minutes up and picks the template", () => {
+  const end = "2026-11-10T10:00:00+00:00";
+  const at = (iso) => Date.parse(iso);
+  assert.equal(formatRemaining(end, at("2026-11-10T08:48:00Z"), LIVE_LABELS), "ends in 1 h 12 min");
+  assert.equal(formatRemaining(end, at("2026-11-10T08:00:00Z"), LIVE_LABELS), "ends in 2 h");
+  assert.equal(formatRemaining(end, at("2026-11-10T09:55:30Z"), LIVE_LABELS), "ends in 5 min");
+  assert.equal(formatRemaining(end, at("2026-11-10T09:59:59Z"), LIVE_LABELS), "ends in 1 min");
+  assert.equal(formatRemaining(end, at("2026-11-10T10:00:00Z"), LIVE_LABELS), "");
+  assert.equal(formatRemaining(null, at("2026-11-10T08:00:00Z"), LIVE_LABELS), "");
+  assert.equal(formatRemaining(end, at("2026-11-10T08:00:00Z"), LABELS), "");
+});
+
+test("formatRemaining in Slovenian", () => {
+  const sl = { ...LIVE_LABELS, ends_in: "konča se čez {d}" };
+  const now = Date.parse("2026-11-10T08:48:00Z");
+  assert.equal(formatRemaining("2026-11-10T10:00:00+00:00", now, sl), "konča se čez 1 h 12 min");
+});
+
+function liveState(labels, end) {
+  const eid = "sensor.dom_planned_outages";
+  return {
+    states: {
+      [eid]: {
+        entity_id: eid,
+        state: "1",
+        attributes: {
+          card: [
+            item("TP Zabukovica", "live", "2026-11-10T07:30:00+00:00", {
+              title: "Outage now · 08:30–11:00",
+              detail: "until 11:00",
+              span: "08:30–11:00",
+              chip: "",
+              end,
+            }),
+          ],
+          card_labels: labels,
+        },
+      },
+    },
+    entities: { [eid]: { entity_id: eid, platform: "elektro_celje" } },
+  };
+}
+
+test("the live banner names the location and counts down", () => {
+  const h = liveState(LIVE_LABELS, "2026-11-10T10:00:00+00:00");
+  const model = buildModel(h.states, h.entities, Date.parse("2026-11-10T08:48:00Z"));
+  assert.deepEqual(model.banners, [
+    {
+      kind: "live",
+      title: "Outage now · TP Zabukovica",
+      sub: "08:30–11:00 · ends in 1 h 12 min",
+    },
+  ]);
+  assert.equal(model.countdown, true);
+});
+
+test("the live banner uses detail when end or the labels are missing", () => {
+  const noEnd = liveState(LIVE_LABELS, null);
+  assert.deepEqual(buildModel(noEnd.states, noEnd.entities).banners[0], {
+    kind: "live",
+    title: "Outage now · TP Zabukovica",
+    sub: "08:30–11:00 · until 11:00",
+  });
+  const old = liveState(LABELS, "2026-11-10T10:00:00+00:00");
+  const model = buildModel(old.states, old.entities, Date.parse("2026-11-10T08:48:00Z"));
+  assert.deepEqual(model.banners[0], {
+    kind: "live",
+    title: "Outage now · 08:30–11:00",
+    sub: "TP Zabukovica · until 11:00",
+  });
+});
+
+test("no countdown without a live item", () => {
+  const h = hass([{ card: [item("Dom", "next", "2026-11-10")] }]);
+  assert.equal(buildModel(h.states, h.entities).countdown, false);
+});
+
+test("the problem banner has a title and a detail line", () => {
+  const h = hass([{ card: [], problem: "Cannot read the Elektro Celje feed. Old." }]);
+  const eid = "sensor.loc0_planned_outages";
+  h.states[eid].attributes.card_problem_title = "Cannot read the Elektro Celje feed";
+  h.states[eid].attributes.card_problem_detail =
+    "Last good check: today 12:23 · the list below may be old";
+  assert.deepEqual(buildModel(h.states, h.entities).problem, {
+    title: "Cannot read the Elektro Celje feed",
+    detail: "Last good check: today 12:23 · the list below may be old",
+  });
 });

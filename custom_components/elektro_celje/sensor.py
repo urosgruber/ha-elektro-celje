@@ -118,6 +118,8 @@ class ElektroCeljeSensor(ElektroCeljeEntity, SensorEntity):
             "card",
             "card_footer",
             "card_problem",
+            "card_problem_title",
+            "card_problem_detail",
             "card_labels",
         }
     )

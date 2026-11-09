@@ -144,10 +144,8 @@ def test_labels_footer_problem_english() -> None:
         last_success=_t(11, 9, 12, 23),
         problem_since=NOW - timedelta(hours=2),
     )
-    assert result["card_labels"] == {
-        "also_planned": "Also planned",
-        "ended_today": "Ended today",
-    }
+    assert result["card_labels"]["also_planned"] == "Also planned"
+    assert result["card_labels"]["ended_today"] == "Ended today"
     assert result["card_footer"] == "Checked Mon 9 Nov 2026, 12:23 · elektro-celje.si"
     assert result["card_problem"] == (
         "Cannot read the Elektro Celje feed. Last good check: today 12:23. "
@@ -243,10 +241,8 @@ def test_slovenian_wording() -> None:
         problem_since=NOW - timedelta(hours=2),
     )
     assert result["card"][0]["title"].startswith("Izklop zdaj · ")
-    assert result["card_labels"] == {
-        "also_planned": "Še načrtovani izklopi",
-        "ended_today": "Danes končani izklopi",
-    }
+    assert result["card_labels"]["also_planned"] == "Še načrtovani izklopi"
+    assert result["card_labels"]["ended_today"] == "Danes končani izklopi"
     assert result["card_problem"].endswith(" Spodnji seznam je morda zastarel.")
     from custom_components.elektro_celje.cardtext import TEXTS
 
@@ -311,3 +307,67 @@ def test_span_and_chip_slovenian() -> None:
     item = result["card"][0]
     assert item["span"] == "08:00–14:00 · 6 h"
     assert item["chip"] == "čez 3 dni"
+
+
+def test_live_item_has_end_and_labels_english() -> None:
+    result = _card([_o("a", _t(11, 9, 11), _t(11, 9, 13))])
+    item = result["card"][0]
+    assert item["end"] == "2026-11-09T12:00:00+00:00"
+    assert item["detail"] == "until 13:00"
+    labels = result["card_labels"]
+    assert labels["now"] == "Outage now"
+    assert labels["ends_in"] == "ends in {d}"
+    assert labels["hours_minutes"] == "{h} h {m} min"
+    assert labels["hours"] == "{h} h"
+    assert labels["minutes"] == "{m} min"
+
+
+def test_only_live_items_have_end() -> None:
+    result = _card(
+        [
+            _o("b", _t(11, 10, 8), _t(11, 10, 10)),
+            _o("c", _t(11, 9, 8), _t(11, 9, 10)),
+        ]
+    )
+    nxt, ended = result["card"]
+    assert "end" not in nxt
+    assert "end" not in ended
+
+
+def test_live_labels_slovenian() -> None:
+    labels = _card([], lang="sl")["card_labels"]
+    assert labels["now"] == "Izklop zdaj"
+    assert labels["ends_in"] == "konča se čez {d}"
+    assert labels["hours_minutes"] == "{h} h {m} min"
+    assert labels["hours"] == "{h} h"
+    assert labels["minutes"] == "{m} min"
+
+
+def test_problem_title_and_detail_english() -> None:
+    result = _card(
+        [], last_success=_t(11, 9, 12, 23), problem_since=NOW - timedelta(hours=2)
+    )
+    assert result["card_problem_title"] == "Cannot read the Elektro Celje feed"
+    assert result["card_problem_detail"] == (
+        "Last good check: today 12:23 · the list below may be old"
+    )
+    assert result["card_problem"].startswith("Cannot read the Elektro Celje feed.")
+
+
+def test_problem_title_and_detail_slovenian() -> None:
+    result = _card(
+        [],
+        lang="sl",
+        last_success=_t(11, 9, 12, 23),
+        problem_since=NOW - timedelta(hours=2),
+    )
+    assert result["card_problem_title"] == "Podatkov Elektro Celje ni mogoče prebrati"
+    assert result["card_problem_detail"] == (
+        "Zadnje uspešno preverjanje: danes 12:23 · spodnji seznam je morda zastarel"
+    )
+
+
+def test_no_problem_title_without_problem() -> None:
+    result = _card([], problem_since=NOW - timedelta(minutes=30))
+    assert result["card_problem_title"] is None
+    assert result["card_problem_detail"] is None

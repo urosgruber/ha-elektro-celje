@@ -18,10 +18,47 @@ function bySort(a, b) {
   return x < y ? -1 : x > y ? 1 : 0;
 }
 
+function fill(template, values) {
+  return String(template).replace(/\{(\w+)\}/g, (all, key) =>
+    key in values ? String(values[key]) : all,
+  );
+}
+
+/**
+ * Return the text "ends in 1 h 12 min" for the end of a live outage.
+ *
+ * The integration gives the templates in card_labels. The text is empty when
+ * the end or a template is missing, or when the end has passed.
+ */
+export function formatRemaining(end, now, labels) {
+  const time = Date.parse(end ?? "");
+  if (Number.isNaN(time) || !labels?.ends_in || !labels?.minutes) return "";
+  const left = Math.ceil((time - now) / 60000);
+  if (left <= 0) return "";
+  const h = Math.floor(left / 60);
+  const m = left % 60;
+  let duration;
+  if (h === 0) duration = fill(labels.minutes, { m });
+  else if (m === 0 && labels.hours) duration = fill(labels.hours, { h });
+  else duration = fill(labels.hours_minutes ?? labels.minutes, { h, m });
+  return fill(labels.ends_in, { d: duration });
+}
+
 function banner(kind, item) {
   const location = item.location ?? "";
   const sub = item.detail ? `${location} · ${item.detail}` : location;
   return { kind, title: item.title ?? "", sub };
+}
+
+function liveBanner(item, labels, now) {
+  if (!labels.now) return banner("live", item);
+  const left = formatRemaining(item.end, now, labels) || item.detail || "";
+  const span = item.span ?? "";
+  return {
+    kind: "live",
+    title: `${labels.now} · ${item.location ?? ""}`,
+    sub: span && left ? `${span} · ${left}` : span || left,
+  };
 }
 
 function stamp(value) {
@@ -44,7 +81,7 @@ export function cardEntities(states, entities) {
  * Each other live outage has its own banner. The list shows the other
  * planned outages, grouped by day. The banner outage is not in the list.
  */
-export function buildModel(states, entities) {
+export function buildModel(states, entities, now = Date.now()) {
   const items = [];
   let problem = null;
   let labels = {};
@@ -53,7 +90,14 @@ export function buildModel(states, entities) {
   for (const eid of cardEntities(states, entities)) {
     const attributes = states[eid].attributes;
     items.push(...itemsOf(attributes));
-    if (!problem && attributes.card_problem) problem = attributes.card_problem;
+    if (!problem && attributes.card_problem) {
+      problem = {
+        title: attributes.card_problem_title || attributes.card_problem,
+        detail: attributes.card_problem_title
+          ? attributes.card_problem_detail || ""
+          : "",
+      };
+    }
     if (attributes.card_labels) labels = attributes.card_labels;
     if (attributes.card_footer) {
       const time = stamp(attributes.last_success);
@@ -69,7 +113,7 @@ export function buildModel(states, entities) {
   const ended = items.filter((i) => i.group === "ended").sort(bySort);
   const hidden = items.length === 0 && !problem;
 
-  const banners = live.map((i) => banner("live", i));
+  const banners = live.map((i) => liveBanner(i, labels, now));
   if (!live.length && next.length) banners.push(banner("next", next[0]));
   const rest = live.length ? next : next.slice(1);
 
@@ -88,6 +132,7 @@ export function buildModel(states, entities) {
 
   return {
     hidden,
+    countdown: live.some((i) => i.end),
     problem,
     banners,
     planned: days.length ? { label: labels.also_planned ?? "", days } : null,
@@ -205,7 +250,9 @@ function el(tag, className, text) {
 function renderContent(model) {
   const content = el("div", "content");
   if (model.problem) {
-    content.append(el("div", "banner problem", `⚠ ${model.problem}`));
+    const node = el("div", "banner problem", `⚠ ${model.problem.title}`);
+    if (model.problem.detail) node.append(el("small", "", model.problem.detail));
+    content.append(node);
   }
   for (const b of model.banners) {
     const node = el("div", `banner ${b.kind}`);
@@ -249,7 +296,39 @@ function defineCard() {
       this._entitiesRef = null;
       this._seen = null;
       this._model = null;
+      this._timer = null;
       this.attachShadow({ mode: "open" });
+    }
+
+    connectedCallback() {
+      this._syncTimer();
+    }
+
+    disconnectedCallback() {
+      this._stopTimer();
+    }
+
+    _stopTimer() {
+      if (this._timer !== null) {
+        clearInterval(this._timer);
+        this._timer = null;
+      }
+    }
+
+    // While a live outage shows, count down once a minute.
+    _syncTimer() {
+      const needed = Boolean(this._model?.countdown) && this.isConnected !== false;
+      if (!needed) {
+        this._stopTimer();
+      } else if (this._timer === null) {
+        this._timer = setInterval(() => this._tick(), 60000);
+      }
+    }
+
+    _tick() {
+      if (!this._hass) return;
+      this._model = buildModel(this._hass.states, this._hass.entities);
+      this._render();
     }
 
     static getStubConfig() {
@@ -332,6 +411,7 @@ function defineCard() {
     }
 
     _render() {
+      this._syncTimer();
       const model = this._model;
       const editing = this._editMode || this._preview;
       const hide = model.hidden && !editing;

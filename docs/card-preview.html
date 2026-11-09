@@ -83,7 +83,11 @@
 <script type="module">
   import "../custom_components/elektro_celje/frontend/elektro-celje-card.js";
 
-  const LABELS = { also_planned: "Also planned", ended_today: "Ended today" };
+  const LABELS = {
+    also_planned: "Also planned", ended_today: "Ended today", now: "Outage now",
+    ends_in: "ends in {d}", hours_minutes: "{h} h {m} min", hours: "{h} h",
+    minutes: "{m} min",
+  };
   const FOOTER = "Checked Mon 9 Nov 2026, 16:23 · elektro-celje.si";
 
   function next(location, sort, day, span, chip) {
@@ -105,6 +109,8 @@
     location: "TP Zabukovica", group: "live", sort: "2026-11-10T07:30:00+00:00",
     title: "Outage now · 08:30–11:00", detail: "until 11:00", day: "Tue 10 Nov",
     row: "08:30–11:00", span: "08:30–11:00", chip: "",
+    // The outage ends 72 minutes after the page loads: "ends in 1 h 12 min".
+    end: new Date(Date.now() + 72 * 60000).toISOString(),
   };
   const ended = {
     location: "TP Zabukovica", group: "ended", sort: "2026-11-09T07:00:00+00:00",
@@ -112,7 +118,9 @@
     row: "08:00–10:00", span: "08:00–10:00", chip: "",
   };
   const PROBLEM = "Cannot read the Elektro Celje feed. Last good check: " +
-    "Mon 9 Nov, 12:23. The list below may be old.";
+    "today 12:23. The list below may be old.";
+  const PROBLEM_TITLE = "Cannot read the Elektro Celje feed";
+  const PROBLEM_DETAIL = "Last good check: today 12:23 · the list below may be old";
 
   function hass(card, problem = null) {
     const eid = "sensor.dom_planned_outages";
@@ -123,6 +131,8 @@
           state: String(card.length),
           attributes: {
             card, card_problem: problem, card_labels: LABELS,
+            card_problem_title: problem ? PROBLEM_TITLE : null,
+            card_problem_detail: problem ? PROBLEM_DETAIL : null,
             card_footer: FOOTER, last_success: "2026-11-09T15:23:00+00:00",
           },
         },
