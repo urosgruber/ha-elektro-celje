@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py313"
+line-length = 88
+extend-exclude = [".venv", ".superpowers"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
