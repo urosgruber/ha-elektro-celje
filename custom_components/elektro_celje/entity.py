@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN, TZ
+from .const import DOMAIN
 from .location import LocationCoordinator, LocationData
-from .models import Outage, ParseStatus
+from .models import Outage
+from .outages import is_ended_today
 
 TEXT_LIMIT = 300
 
@@ -32,17 +33,7 @@ def outage_dict(outage: Outage) -> dict[str, Any]:
 
 def ended_today(data: LocationData, now: datetime) -> list[dict[str, Any]]:
     """Return the listed outages that ended earlier on the local date of `now`."""
-    today = now.astimezone(TZ).date()
-    return [
-        outage_dict(o)
-        for o in data.outages
-        if o.status in (ParseStatus.OK, ParseStatus.DATE_ONLY)
-        and o.end is not None
-        and o.end <= now
-        # The last instant decides the day, so an all-day outage that ends at
-        # 00:00 belongs to the day before.
-        and (o.end - timedelta(microseconds=1)).astimezone(TZ).date() == today
-    ]
+    return [outage_dict(o) for o in data.outages if is_ended_today(o, now)]
 
 
 def debug_attributes(data: LocationData) -> dict[str, Any]:

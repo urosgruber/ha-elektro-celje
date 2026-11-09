@@ -140,6 +140,9 @@ The notification texts are in Slovenian.
 ## Dashboard card
 
 The card is a standard Markdown card. It shows all outages of all locations.
+The integration builds all texts of the card. The card only loops and prints.
+The texts are in Slovenian when the language of Home Assistant is Slovenian.
+Otherwise they are in English.
 The card is empty when no outage is planned, no outage ended today, and no
 feed problem is older than one hour.
 
@@ -151,164 +154,80 @@ the card shows this section and the footer.
 If your dashboard still shows an empty card frame, wrap the card in
 a **Conditional** card, or add a visibility condition on the card.
 
-Texts are in a small dictionary at the top of the template. Change them to
-translate the card.
+The `planned_outages` sensor has these attributes for the card. They are not
+recorded in the history. Do not use them in automations. Use `outages` and
+`ended_today` instead.
 
-The card shows times in the time zone of Home Assistant. The day and month
-names come from `strftime` (`%a` and `%b`). They are in English, and the
-dictionary does not translate them. The `days_until_outage` sensor always
-counts days in `Europe/Ljubljana`. The two differ only when Home Assistant
-runs in another time zone.
+| Attribute | Meaning |
+|---|---|
+| `card` | A list of ready items. Each has `location`, `group`, `sort`, `title`, `detail`, `day` and `row`. The `group` is `live`, `next` or `ended`. |
+| `card_labels` | The headings `also_planned` and `ended_today`. |
+| `card_footer` | The text "Checked ..." with the last good check. |
+| `card_problem` | A text when a feed problem lasts more than one hour. Otherwise `null`. |
+
+All times and dates use `Europe/Ljubljana`. The texts change at each update
+and at local midnight, so "tomorrow" stays right. The card shows the device
+name. If you rename the device, the new name shows at the next update.
 
 ```yaml
 type: markdown
 content: |
-  {#- Texts. Change the values to translate the card. -#}
-  {%- set L = {
-    'next': 'Next outage',
-    'now': 'Outage now',
-    'ends_in': 'ends in',
-    'also': 'Also planned',
-    'ended_today': 'Ended today',
-    'ended': 'ended',
-    'checked': 'Checked',
-    'last_good': 'Last good check',
-    'feed_error': 'Cannot read the Elektro Celje feed',
-    'list_old': 'the list below may be old',
-    'problem_since': 'Problem since',
-    'unknown_time': 'time unknown',
-    'unknown_day': 'Date unknown',
-    'all_day': 'all day',
-    'today': 'Today',
-    'tomorrow': 'Tomorrow',
-    'in_today': 'today',
-    'in_tomorrow': 'tomorrow',
-    'in_day': 'in 1 day',
-    'in_days': 'in {n} days',
-    'h': 'h',
-    'min': 'min',
-  } -%}
-  {%- macro dur(m) -%}
-    {%- set h = m // 60 -%}{%- set r = m % 60 -%}
-    {{- [(h ~ ' ' ~ L.h) if h else '', (r ~ ' ' ~ L.min) if r else ''] | select | join(' ') -}}
-  {%- endmacro -%}
-  {%- macro daydiff(s) -%}{{ (s.date() - now().date()).days }}{%- endmacro -%}
-  {%- macro rel(d) -%}
-    {%- if d <= 0 -%}{{ L.in_today }}
-    {%- elif d == 1 -%}{{ L.in_tomorrow }}
-    {%- else -%}{{ L.in_days.format(n=d) }}{%- endif -%}
-  {%- endmacro -%}
-  {%- macro clock(i) -%}
-    {%- if i.all_day -%}{{ L.all_day }}{%- else -%}{{ i.s.strftime('%H:%M') }}–{{ i.e.strftime('%H:%M') if i.e else '?' }}{%- endif -%}
-  {%- endmacro -%}
-  {%- macro span(i) -%}
-    {%- if i.s is none -%}{{ L.unknown_time }}
-    {%- elif i.all_day -%}{{ L.all_day }}
-    {%- else -%}{{ i.s.strftime('%H:%M') }} – {{ i.e.strftime('%H:%M') if i.e else '?' }}
-    {%- if i.e %} · {{ dur(((i.e - i.s).total_seconds() // 60) | int) }}{% endif -%}
-    {%- endif -%}
-  {%- endmacro -%}
-
-  {#- Collect the outages and the problems of all locations. -#}
-  {%- set now_ = now() -%}
-  {%- set ns = namespace(items=[], ended=[], problem=none, oldest=none) -%}
-  {%- for ent in integration_entities('elektro_celje') -%}
-    {%- set attrs = states[ent].attributes if states[ent] is not none else {} -%}
-    {%- set dev = device_id(ent) -%}
-    {%- set name = (device_attr(dev, 'name_by_user') or device_attr(dev, 'name') or ent) if dev else ent -%}
-    {%- if ent.startswith('sensor.') and 'outages' in attrs -%}
-      {%- for o in attrs.outages -%}
-        {%- set s = as_local(as_datetime(o.start)) if o.start else none -%}
-        {%- set e = as_local(as_datetime(o.end)) if o.end else none -%}
-        {%- if e is none or e > now_ -%}
-          {%- set ns.items = ns.items + [{
-            'loc': name, 's': s, 'e': e, 'all_day': o.all_day, 'text': o.text,
-            'key': as_timestamp(s) if s else 9e12}] -%}
-        {%- endif -%}
-      {%- endfor -%}
-      {%- for o in attrs.get('ended_today', []) -%}
-        {%- set s = as_local(as_datetime(o.start)) if o.start else none -%}
-        {%- set e = as_local(as_datetime(o.end)) if o.end else none -%}
-        {%- set ns.ended = ns.ended + [{
-          'loc': name, 's': s, 'e': e, 'all_day': o.all_day, 'text': o.text,
-          'key': as_timestamp(s) if s else 9e12}] -%}
-      {%- endfor -%}
-      {%- if attrs.last_success -%}
-        {%- set ok = as_local(as_datetime(attrs.last_success)) -%}
-        {%- set ns.oldest = ok if ns.oldest is none or ok < ns.oldest else ns.oldest -%}
-      {%- endif -%}
-    {%- elif ent.startswith('binary_sensor.') and attrs.get('problem_since') -%}
-      {%- set p = as_local(as_datetime(attrs.problem_since)) -%}
-      {%- if (now_ - p).total_seconds() > 3600 -%}
-        {%- set ns.problem = p if ns.problem is none or p < ns.problem else ns.problem -%}
-      {%- endif -%}
+  {#- The integration builds all texts. This card only loops and prints. -#}
+  {%- set ns = namespace(items=[], problem='', foot='', stamp='', labels={}) -%}
+  {%- for e in integration_entities('elektro_celje') if state_attr(e, 'card') is not none -%}
+    {%- set ns.items = ns.items + state_attr(e, 'card') -%}
+    {%- set ns.labels = state_attr(e, 'card_labels') -%}
+    {%- set ns.problem = ns.problem or state_attr(e, 'card_problem') or '' -%}
+    {%- set ts = state_attr(e, 'last_success') or '' -%}
+    {%- if state_attr(e, 'card_footer') and (not ns.stamp or ts < ns.stamp) -%}
+      {%- set ns.stamp = ts -%}{%- set ns.foot = state_attr(e, 'card_footer') -%}
     {%- endif -%}
   {%- endfor -%}
-  {%- set items = ns.items | sort(attribute='key') -%}
-  {%- set ended = ns.ended | sort(attribute='key') -%}
-
-  {#- Find the banner outage: the active one, else the next one. -#}
-  {%- set pick = namespace(active=-1) -%}
-  {%- for i in items -%}
-    {%- if pick.active < 0 and i.s is not none and i.e is not none and i.s <= now_ < i.e -%}
-      {%- set pick.active = loop.index0 -%}
-    {%- endif -%}
-  {%- endfor -%}
-  {%- set live = pick.active >= 0 -%}
-  {#- With a feed problem, the banner shows only an active outage. -#}
-  {%- set banner = pick.active if live else (0 if items and not ns.problem else -1) -%}
-
-  {%- if items or ended or ns.problem -%}
+  {%- set live = ns.items | selectattr('group', 'eq', 'live') | sort(attribute='sort') | list -%}
+  {%- set nxt = ns.items | selectattr('group', 'eq', 'next') | sort(attribute='sort') | list -%}
+  {%- set ended = ns.items | selectattr('group', 'eq', 'ended') | sort(attribute='sort') | list -%}
+  {%- set banner = (live + nxt) | first | default(none) -%}
+  {%- set rest = nxt[(0 if live else 1):] -%}
+  {%- if ns.items or ns.problem -%}
   {%- if ns.problem %}
 
-  <ha-alert alert-type="info" title="⚠ {{ L.feed_error }}">
-  {{ L.last_good }}: {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') if ns.oldest else '–' }} · {{ L.problem_since }} {{ ns.problem.strftime('%a %-d %b, %H:%M') }} · {{ L.list_old }}
+  <ha-alert alert-type="info">⚠ {{ ns.problem }}</ha-alert>
+  {% endif -%}
+  {%- if banner %}
+
+  <ha-alert alert-type="{{ 'error' if live else 'warning' }}" title="{{ '🔌' if live else '⚡' }} {{ banner.title }}">
+  {{ banner.location }}{{ ' · ' ~ banner.detail if banner.detail }}
   </ha-alert>
   {% endif -%}
-  {%- if banner >= 0 -%}
-  {%- set b = items[banner] -%}
-  {%- if live %}
+  {%- if rest %}
 
-  <ha-alert alert-type="error" title="🔌 {{ L.now }} · {{ b.loc }}">
-  {{ clock(b) }} · {{ L.ends_in }} {{ dur(((b.e - now_).total_seconds() // 60) | int) }}
-  </ha-alert>
-  {% else %}
-  {%- set d = daydiff(b.s)|int if b.s else 0 %}
+  **{{ ns.labels.also_planned }}**
+  {% for i in rest -%}
+  {%- if loop.first or i.day != loop.previtem.day %}
 
-  <ha-alert alert-type="warning" title="⚡ {{ (L.today ~ ', ') if d == 0 and b.s else (L.tomorrow ~ ', ') if d == 1 and b.s else '' }}{{ b.s.strftime('%a %-d %b') if b.s else L.unknown_day }} · {{ span(b) if not b.s else clock(b) }}">
-  {{ b.loc }}{% if b.s and b.e and not b.all_day %} · {{ dur(((b.e - b.s).total_seconds() // 60) | int) }}{% endif %}{% if b.s %} · {{ L.in_day if d == 1 else rel(d) }}{% else %} · {{ b.text }}{% endif %}
-  </ha-alert>
+  **{{ i.day }}**
+  {% endif %}
+  - **{{ i.location }}** · {{ i.row }}
+  {%- endfor %}
   {% endif -%}
-  {%- endif -%}
-  {%- set rest = namespace(day='') -%}
-  {%- set others = items | length - (1 if banner >= 0 else 0) -%}
-  {%- if others and banner >= 0 %}
-
-  **{{ L.also }}**
-  {% endif -%}
-  {%- for i in items -%}
-  {%- if loop.index0 != banner -%}
-  {%- set label = i.s.strftime('%a %-d %b') if i.s else L.unknown_day -%}
-  {%- if label != rest.day %}
-
-  **{{ label }}**
-  {% set rest.day = label -%}{%- endif %}
-  - {{ i.loc }} · {{ span(i) }}{% if i.s %} · *{{ rel(daydiff(i.s)|int) }}*{% else %} · {{ i.text }}{% endif %}
-  {%- endif -%}
-  {% endfor %}
   {%- if ended %}
 
-  <small>{{ L.ended_today }}</small><br>
+  <small>{{ ns.labels.ended_today }}</small><br>
   {% for i in ended -%}
-  <small>*✓ {{ i.loc }} · {{ clock(i) }} · {{ L.ended }}*</small>{{ '<br>' if not loop.last }}
+  <small>*✓ {{ i.location }} · {{ i.title }}*</small>{{ '<br>' if not loop.last }}
   {% endfor -%}
   {%- endif %}
 
-  {% if ns.oldest -%}
-  *{{ L.checked }} {{ ns.oldest.strftime('%a %-d %b %Y, %H:%M') }} · elektro-celje.si*
-  {%- endif %}
+  {% if ns.foot -%}*{{ ns.foot }}*{%- endif %}
   {%- endif %}
 ```
+
+## Icon
+
+The integration ships its own icon. The files are
+`custom_components/elektro_celje/brand/icon.png` and `icon@2x.png`. It is an original drawing. It is not the logo of Elektro
+Celje. The script `scripts/make_icon.py` draws it. Run
+`.venv/bin/python scripts/make_icon.py` to draw it again.
 
 ## Migration from the YAML version
 

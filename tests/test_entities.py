@@ -533,3 +533,47 @@ async def test_calendar_state_off_after_end(
     state = hass.states.get(entity_id)
     assert state.state == "off"
     assert "message" not in state.attributes
+
+
+async def test_card_attributes(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The planned_outages sensor offers the ready texts of the card."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    attrs = _state(hass, entry, "sensor", "planned_outages").attributes
+    [item] = attrs["card"]
+    assert item["location"] == "Home"
+    assert item["group"] == "next"
+    assert item["title"] == "Today · 08:30–11:00"
+    assert attrs["card_labels"]["ended_today"] == "Ended today"
+    assert attrs["card_footer"].startswith("Checked Mon 9 Nov 2026, 07:40")
+    assert attrs["card_problem"] is None
+
+
+async def test_card_uses_device_name_and_language(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The card uses the user name of the device and the language of HA."""
+    from homeassistant.helpers import device_registry as dr
+
+    hass.config.language = "sl"
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    entry.add_to_hass(hass)
+    registry = dr.async_get(hass)
+    device = registry.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Home",
+    )
+    registry.async_update_device(device.id, name_by_user="Hiša")
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    attrs = _state(hass, entry, "sensor", "planned_outages").attributes
+    assert attrs["card"][0]["location"] == "Hiša"
+    assert attrs["card"][0]["title"].startswith("Danes · ")
+    assert attrs["card_labels"]["also_planned"] == "Še načrtovano"

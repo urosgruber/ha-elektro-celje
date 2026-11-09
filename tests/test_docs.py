@@ -56,6 +56,23 @@ def test_readme_documents_payload_key_and_diagnostics() -> None:
 
 
 def test_readme_documents_last_checked_and_card_locale() -> None:
-    """R23: README notes last_checked in a long failure and the card names."""
+    """R23: README notes last_checked in a long failure and the card texts."""
     assert "last state change of the location" in README
-    assert "`%a` and `%b`" in README
+    assert "The integration builds all texts of the card" in README
+
+
+def test_brand_icons_have_the_right_size() -> None:
+    """The integration ships a 256 px icon and a 512 px icon@2x with alpha."""
+    from PIL import Image
+
+    for name, size in (("icon.png", 256), ("icon@2x.png", 512)):
+        image = Image.open(BASE / "brand" / name)
+        assert image.size == (size, size), name
+        assert image.mode == "RGBA", name
+        assert image.getpixel((0, 0))[3] == 0, name
+
+
+def test_readme_mentions_icon_and_no_old_version() -> None:
+    """The README names the brand icon and has no 2.0.1 text."""
+    assert "brand/icon.png" in README
+    assert "2.0.1" not in README

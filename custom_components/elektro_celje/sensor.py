@@ -18,6 +18,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import ElektroCeljeConfigEntry
+from .cardtext import build_card
 from .entity import ElektroCeljeEntity, debug_attributes, ended_today
 from .location import LocationData
 from .outages import days_until
@@ -109,7 +110,16 @@ class ElektroCeljeSensor(ElektroCeljeEntity, SensorEntity):
 
     entity_description: ElektroCeljeSensorDescription
     _unrecorded_attributes = frozenset(
-        {"outages", "ended_today", "feed_urls", "last_success"}
+        {
+            "outages",
+            "ended_today",
+            "feed_urls",
+            "last_success",
+            "card",
+            "card_footer",
+            "card_problem",
+            "card_labels",
+        }
     )
 
     def __init__(self, coordinator, entry, description) -> None:
@@ -126,7 +136,21 @@ class ElektroCeljeSensor(ElektroCeljeEntity, SensorEntity):
         """Return the debug attributes of the planned_outages sensor."""
         if self.entity_description.key != "planned_outages":
             return None
+        now = dt_util.utcnow()
         return {
             **debug_attributes(self.data),
-            "ended_today": ended_today(self.data, dt_util.utcnow()),
+            "ended_today": ended_today(self.data, now),
+            **build_card(
+                self.data, self._location_name(), now, self.hass.config.language
+            ),
         }
+
+    def _location_name(self) -> str:
+        device = self.device_entry
+        if device is not None:
+            return (
+                device.name_by_user
+                or device.name
+                or self.coordinator.config_entry.title
+            )
+        return self.coordinator.config_entry.title
