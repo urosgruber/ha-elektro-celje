@@ -411,3 +411,125 @@ async def test_device_info_model(
     device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, entry.entry_id)})
     assert device.manufacturer == "Elektro Celje"
     assert device.model == "Planned outage notices (RSS)"
+
+
+def _outage_obj(key: str, start, end, status, all_day: bool = False):
+    from custom_components.elektro_celje.models import Outage
+
+    return Outage(
+        key=key,
+        notice_id=key,
+        region="velenje",
+        station_text="Zabukovica Papež",
+        text="x",
+        link="https://example.com",
+        status=status,
+        start=start,
+        end=end,
+        all_day=all_day,
+    )
+
+
+async def _inject(hass, entry, outages, planned=None) -> None:
+    coordinator = entry.runtime_data
+    coordinator.data.outages = outages
+    coordinator.data.planned = planned or []
+    coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+
+
+async def _events(hass, entry, day: int) -> list:
+    entity_id = _entity_id(hass, entry, "calendar", "planned_outages")
+    result = await hass.services.async_call(
+        "calendar",
+        "get_events",
+        {
+            "entity_id": entity_id,
+            "start_date_time": _local(day, 0).isoformat(),
+            "end_date_time": _local(day + 1, 0).isoformat(),
+        },
+        blocking=True,
+        return_response=True,
+    )
+    return result[entity_id]["events"]
+
+
+async def test_ended_today_all_day_and_midnight_edges(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """The last instant decides the day. An end at 00:00 is never listed."""
+    from custom_components.elektro_celje.models import ParseStatus
+
+    freezer.move_to(_local(9, 23))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry("no such station")
+    await _setup(hass, entry)
+    all_day = _outage_obj(
+        "a:0", _local(9, 0), _local(10, 0), ParseStatus.DATE_ONLY, all_day=True
+    )
+    timed = _outage_obj("b:0", _local(9, 22), _local(10, 0), ParseStatus.OK)
+
+    # Day D, 23:00: both outages have not ended.
+    await _inject(hass, entry, [all_day, timed], [all_day, timed])
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert state.attributes["ended_today"] == []
+
+    # Day D+1, 00:30: they ended, and neither ran on D+1.
+    freezer.move_to(_local(10, 0, 30))
+    await _inject(hass, entry, [all_day, timed])
+    state = _state(hass, entry, "sensor", "planned_outages")
+    assert state.attributes["ended_today"] == []
+
+
+async def test_ended_today_skips_failed_and_lists_date_only(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """A FAILED outage is not listed. A date_only outage is, on its own day."""
+    from custom_components.elektro_celje.models import ParseStatus
+
+    freezer.move_to(_local(9, 23, 59))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry("no such station")
+    await _setup(hass, entry)
+    failed = _outage_obj("f:0", None, None, ParseStatus.FAILED)
+    # A date_only outage whose end is earlier than now, on the same local day.
+    date_only = _outage_obj(
+        "d:0", _local(9, 0), _local(9, 12), ParseStatus.DATE_ONLY, all_day=True
+    )
+    await _inject(hass, entry, [date_only, failed])
+    ended = _state(hass, entry, "sensor", "planned_outages").attributes["ended_today"]
+    assert [e["status"] for e in ended] == ["date_only"]
+
+
+async def test_calendar_dedupes_kept_record(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """A kept record that the feed also lists gives one event."""
+    from custom_components.elektro_celje.models import ParseStatus
+
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    planned = entry.runtime_data.data.planned
+    assert len(planned) == 1
+    await _inject(hass, entry, list(entry.runtime_data.data.outages), planned)
+    assert len(await _events(hass, entry, 9)) == 1
+    # A kept record that is not in the feed still gets an event.
+    kept = _outage_obj("k:0", _local(9, 13), _local(9, 14), ParseStatus.OK)
+    await _inject(hass, entry, list(entry.runtime_data.data.outages), [*planned, kept])
+    assert len(await _events(hass, entry, 9)) == 2
+
+
+async def test_calendar_state_off_after_end(
+    hass: HomeAssistant, aioclient_mock: AiohttpClientMocker, freezer
+) -> None:
+    """After the end, the calendar is off and its event is not the ended outage."""
+    freezer.move_to(_local(9, 23))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry()
+    await _setup(hass, entry)
+    entity_id = _entity_id(hass, entry, "calendar", "planned_outages")
+    state = hass.states.get(entity_id)
+    assert state.state == "off"
+    assert "message" not in state.attributes

@@ -232,8 +232,9 @@ async def test_only_ended_today(hass: HomeAssistant) -> None:
     text = await _render(hass)
     assert "Ended today" in text
     assert "Dom" in text
-    assert "08:30–11:00" in text
+    assert "<small>*✓ Dom · 08:30–11:00 · ended*</small>" in text
     assert "ha-alert" not in text
+    assert "font" not in text
     assert "Checked" in text
 
 
@@ -264,3 +265,18 @@ async def test_hidden_without_ended_today(hass: HomeAssistant) -> None:
     await _setup(hass)
     _set_ended(hass, [], [])
     assert await _render(hass) == ""
+
+
+async def test_ended_today_after_feed_problem(hass: HomeAssistant) -> None:
+    """With a feed problem, the ended section follows the info alert."""
+    await _setup(hass)
+    _set_ended(hass, [], [_ended()])
+    _set_states(hass, [], problem_since=dt_util.now() - timedelta(hours=2))
+    state = hass.states.get("sensor.dom_planned_outages")
+    hass.states.async_set(
+        state.entity_id, state.state, {**state.attributes, "ended_today": [_ended()]}
+    )
+    text = await _render(hass)
+    assert 'alert-type="info"' in text
+    assert text.index("Ended today") > text.rindex("</ha-alert>")
+    assert text.index("Ended today") < text.index("Checked")

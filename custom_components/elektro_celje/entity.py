@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -39,7 +39,9 @@ def ended_today(data: LocationData, now: datetime) -> list[dict[str, Any]]:
         if o.status in (ParseStatus.OK, ParseStatus.DATE_ONLY)
         and o.end is not None
         and o.end <= now
-        and o.end.astimezone(TZ).date() == today
+        # The last instant decides the day, so an all-day outage that ends at
+        # 00:00 belongs to the day before.
+        and (o.end - timedelta(microseconds=1)).astimezone(TZ).date() == today
     ]
 
 

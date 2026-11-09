@@ -144,9 +144,11 @@ The card is empty when no outage is planned, no outage ended today, and no
 feed problem is older than one hour.
 
 The card has a last section named **Ended today**. It lists the outages that
-ended earlier today. The text is small and grey, so it does not compete with
-the banner. The section has no banner. If only ended outages exist, the card
-shows this section and the footer. If your dashboard still shows an empty card frame, wrap the card in
+ended earlier today. The text is small and in italics, so it does not compete
+with the banner. The section has no banner. If only ended outages exist,
+the card shows this section and the footer.
+
+If your dashboard still shows an empty card frame, wrap the card in
 a **Conditional** card, or add a visibility condition on the card.
 
 Texts are in a small dictionary at the top of the template. Change them to
@@ -296,9 +298,9 @@ content: |
   {% endfor %}
   {%- if ended %}
 
-  <font color="var(--secondary-text-color)"><small>{{ L.ended_today }}</small></font><br>
+  <small>{{ L.ended_today }}</small><br>
   {% for i in ended -%}
-  <font color="var(--secondary-text-color)"><small>✓ {{ i.loc }} · {{ clock(i) }} · {{ L.ended }}</small></font>{{ '<br>' if not loop.last }}
+  <small>*✓ {{ i.loc }} · {{ clock(i) }} · {{ L.ended }}*</small>{{ '<br>' if not loop.last }}
   {% endfor -%}
   {%- endif %}
 
