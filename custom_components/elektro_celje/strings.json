@@ -7,12 +7,14 @@
         "data": {
           "name": "Name",
           "region": "Region",
-          "station": "Station"
+          "station": "Station",
+          "notify_targets": "Notify phones"
         },
         "data_description": {
           "name": "The name of the location, for example Home.",
           "region": "The region feed to watch. Choose All regions if you are not sure.",
-          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now."
+          "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now.",
+          "notify_targets": "The phones that get a notification about the outages of this location. All phones are selected. Clear the list to turn the notifications off."
         }
       },
       "reconfigure": {
@@ -50,10 +52,30 @@
       "init": {
         "title": "Options",
         "data": {
-          "reminder_time": "Reminder time"
+          "notify_targets": "Notify phones",
+          "reminder_time": "Reminder time",
+          "quiet_hours": "Quiet hours",
+          "quiet_from": "Quiet from",
+          "quiet_to": "Quiet until"
         },
         "data_description": {
-          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day."
+          "notify_targets": "The phones that get a notification about the outages of this location. Clear the list to turn the notifications off.",
+          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day.",
+          "quiet_hours": "At night the notifications wait. They arrive when the quiet hours end. A notification about an outage that starts before the end arrives at once. The events never wait.",
+          "quiet_from": "The start of the quiet hours.",
+          "quiet_to": "The end of the quiet hours. If the end is equal to the start, the quiet hours are off."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Advanced",
+            "description": "Use an entity instead of the quiet hours times.",
+            "data": {
+              "quiet_entity": "Quiet hours entity"
+            },
+            "data_description": {
+              "quiet_entity": "A schedule, a toggle helper or a binary sensor, for example a Schedule helper. If you choose one, it replaces the times: the notifications wait while its state is on. Quiet hours must be on."
+            }
+          }
         }
       }
     }
@@ -109,6 +131,20 @@
     "calendar": {
       "planned_outages": {
         "name": "Planned outages"
+      }
+    },
+    "switch": {
+      "notify_detected": {
+        "name": "New outage"
+      },
+      "notify_reminder": {
+        "name": "Reminder"
+      },
+      "notify_changed": {
+        "name": "Changed outage"
+      },
+      "notify_removed": {
+        "name": "Removed outage"
       }
     }
   },

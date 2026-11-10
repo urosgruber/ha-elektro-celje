@@ -7,12 +7,14 @@
         "data": {
           "name": "Ime",
           "region": "Regija",
-          "station": "Postaja"
+          "station": "Postaja",
+          "notify_targets": "Obvesti telefone"
         },
         "data_description": {
           "name": "Ime lokacije, na primer Doma.",
           "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
-          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih."
+          "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih.",
+          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Izbrani so vsi telefoni. Če seznam počistite, so obvestila izklopljena."
         }
       },
       "reconfigure": {
@@ -50,10 +52,30 @@
       "init": {
         "title": "Možnosti",
         "data": {
-          "reminder_time": "Ura opomnika"
+          "notify_targets": "Obvesti telefone",
+          "reminder_time": "Ura opomnika",
+          "quiet_hours": "Tihi čas",
+          "quiet_from": "Tihi čas od",
+          "quiet_to": "Tihi čas do"
         },
         "data_description": {
-          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan."
+          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Če seznam počistite, so obvestila izklopljena.",
+          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan.",
+          "quiet_hours": "Ponoči obvestila počakajo. Pridejo, ko se tihi čas konča. Obvestilo o izklopu, ki se začne pred koncem tihega časa, pride takoj. Dogodki nikoli ne čakajo.",
+          "quiet_from": "Začetek tihega časa.",
+          "quiet_to": "Konec tihega časa. Če je konec enak začetku, je tihi čas izklopljen."
+        },
+        "sections": {
+          "advanced": {
+            "name": "Napredno",
+            "description": "Namesto ur tihega časa uporabite entiteto.",
+            "data": {
+              "quiet_entity": "Entiteta za tihi čas"
+            },
+            "data_description": {
+              "quiet_entity": "Urnik, pomočnik za preklop ali binarni senzor, na primer pomočnik Urnik. Če jo izberete, nadomesti ure: obvestila čakajo, dokler je njeno stanje vklopljeno. Tihi čas mora biti vklopljen."
+            }
+          }
         }
       }
     }
@@ -109,6 +131,20 @@
     "calendar": {
       "planned_outages": {
         "name": "Načrtovani izklopi"
+      }
+    },
+    "switch": {
+      "notify_detected": {
+        "name": "Nov izklop"
+      },
+      "notify_reminder": {
+        "name": "Opomnik"
+      },
+      "notify_changed": {
+        "name": "Spremenjen izklop"
+      },
+      "notify_removed": {
+        "name": "Odstranjen izklop"
       }
     }
   },

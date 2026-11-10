@@ -16,8 +16,13 @@ from homeassistant.config_entries import (
     OptionsFlow,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import (
+    BooleanSelector,
+    EntitySelector,
+    EntitySelectorConfig,
+    SelectOptionDict,
     SelectSelector,
     SelectSelectorConfig,
     SelectSelectorMode,
@@ -29,16 +34,24 @@ from homeassistant.helpers.translation import async_get_translations
 from .client import FeedError, async_fetch_feed
 from .const import (
     ALL_REGIONS,
+    CONF_NOTIFY_TARGETS,
+    CONF_QUIET_ENTITY,
+    CONF_QUIET_FROM,
+    CONF_QUIET_HOURS,
+    CONF_QUIET_TO,
     CONF_REGION,
     CONF_REMINDER_TIME,
     CONF_STATION,
     DEFAULT_REMINDER_TIME,
     DOMAIN,
+    QUIET_ENTITY_DOMAINS,
     REGIONS,
+    SECTION_ADVANCED,
 )
 from .location import async_clear_alert_state
 from .matching import matches
 from .models import Notice
+from .notifications import NotifySettings, mobile_app_targets
 from .parser import FeedFormatError, normalize, parse_feed
 
 _LOGGER = logging.getLogger(__name__)
@@ -89,7 +102,44 @@ def _station_options(notices: list[Notice]) -> list[str]:
     return sorted(names.values(), key=normalize)
 
 
-def _schema(stations: list[str], defaults: Mapping[str, Any]) -> vol.Schema:
+def _phones_selector(phones: Mapping[str, str]) -> SelectSelector:
+    return SelectSelector(
+        SelectSelectorConfig(
+            options=[
+                SelectOptionDict(value=name, label=label)
+                for name, label in phones.items()
+            ],
+            multiple=True,
+            mode=SelectSelectorMode.LIST,
+        )
+    )
+
+
+def _phones_field(phones: Mapping[str, str], suggested: list[str]) -> dict[Any, Any]:
+    """Return the "Notify phones" field, or nothing when no phone exists.
+
+    The field is optional with a suggested value, not a default. An empty
+    choice then stays empty and means "notifications off".
+    """
+    if not phones:
+        return {}
+    return {
+        vol.Optional(
+            CONF_NOTIFY_TARGETS, description={"suggested_value": suggested}
+        ): _phones_selector(phones)
+    }
+
+
+def _schema(
+    stations: list[str],
+    defaults: Mapping[str, Any],
+    phones: Mapping[str, str] | None = None,
+) -> vol.Schema:
+    extra = (
+        _phones_field(phones, list(defaults.get(CONF_NOTIFY_TARGETS, list(phones))))
+        if phones is not None
+        else {}
+    )
     return vol.Schema(
         {
             vol.Required(
@@ -113,6 +163,7 @@ def _schema(stations: list[str], defaults: Mapping[str, Any]) -> vol.Schema:
                     mode=SelectSelectorMode.DROPDOWN,
                 )
             ),
+            **extra,
         }
     )
 
@@ -129,6 +180,7 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def __init__(self) -> None:
         self._data: dict[str, str] = {}
+        self._options: dict[str, Any] = {}
 
     @staticmethod
     def async_get_options_flow(config_entry: ConfigEntry) -> ElektroCeljeOptionsFlow:
@@ -205,13 +257,21 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_REGION: region,
                     CONF_STATION: station,
                 }
+                if step_id == "user":
+                    self._options = {
+                        CONF_NOTIFY_TARGETS: list(
+                            user_input.get(CONF_NOTIFY_TARGETS, [])
+                        )
+                    }
                 return await self.async_step_confirm()
             defaults = user_input
             suggestion_region = user_input.get(CONF_REGION, suggestion_region)
         stations = _station_options(await _async_notices(self.hass, suggestion_region))
+        # Only a new location asks for phones. Reconfigure keeps the options.
+        phones = mobile_app_targets(self.hass) if step_id == "user" else None
         return self.async_show_form(
             step_id=step_id,
-            data_schema=_schema(stations, defaults),
+            data_schema=_schema(stations, defaults, phones),
             errors=errors,
         )
 
@@ -222,7 +282,9 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             if self.source == "reconfigure":
                 return await self._async_save_reconfigure()
-            return self.async_create_entry(title=self._data[CONF_NAME], data=self._data)
+            return self.async_create_entry(
+                title=self._data[CONF_NAME], data=self._data, options=self._options
+            )
         notices = [
             notice
             for notice in await _async_notices(self.hass, self._data[CONF_REGION])
@@ -275,22 +337,50 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class ElektroCeljeOptionsFlow(OptionsFlow):
-    """Change the reminder time."""
+    """Change the phones, the reminder time and the quiet hours."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Ask for the reminder time."""
+        """Ask for the notification options."""
         if user_input is not None:
-            return self.async_create_entry(data=user_input)
-        current = self.config_entry.options.get(
-            CONF_REMINDER_TIME, DEFAULT_REMINDER_TIME.isoformat()
-        )
-        return self.async_show_form(
-            step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_REMINDER_TIME, default=current): TimeSelector(),
-                }
+            data = {k: v for k, v in user_input.items() if k != SECTION_ADVANCED}
+            data[CONF_NOTIFY_TARGETS] = list(data.get(CONF_NOTIFY_TARGETS, []))
+            entity = (user_input.get(SECTION_ADVANCED) or {}).get(CONF_QUIET_ENTITY)
+            if entity:
+                data[CONF_QUIET_ENTITY] = entity
+            return self.async_create_entry(data=data)
+        options = self.config_entry.options
+        settings = NotifySettings.from_options(options)
+        phones = mobile_app_targets(self.hass)
+        # Keep a stored phone in the list, so the user can see and remove it.
+        for name in settings.targets:
+            phones.setdefault(name, name)
+        reminder = options.get(CONF_REMINDER_TIME, DEFAULT_REMINDER_TIME.isoformat())
+        schema: dict[Any, Any] = {
+            **_phones_field(phones, list(settings.targets)),
+            vol.Required(CONF_REMINDER_TIME, default=reminder): TimeSelector(),
+            vol.Required(
+                CONF_QUIET_HOURS, default=settings.quiet_hours
+            ): BooleanSelector(),
+            vol.Required(
+                CONF_QUIET_FROM, default=settings.quiet_from.isoformat()
+            ): TimeSelector(),
+            vol.Required(
+                CONF_QUIET_TO, default=settings.quiet_to.isoformat()
+            ): TimeSelector(),
+            vol.Required(SECTION_ADVANCED, default={}): section(
+                vol.Schema(
+                    {
+                        vol.Optional(
+                            CONF_QUIET_ENTITY,
+                            description={"suggested_value": settings.quiet_entity},
+                        ): EntitySelector(
+                            EntitySelectorConfig(domain=QUIET_ENTITY_DOMAINS)
+                        ),
+                    }
+                ),
+                {"collapsed": True},
             ),
-        )
+        }
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
