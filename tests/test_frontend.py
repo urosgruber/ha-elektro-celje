@@ -22,7 +22,7 @@ def test_card_file_exists() -> None:
 def test_manifest_depends_on_http_and_frontend() -> None:
     manifest = json.loads((BASE / "manifest.json").read_text())
     assert sorted(manifest["dependencies"]) == ["frontend", "http"]
-    assert manifest["version"] == "2.3.1"
+    assert manifest["version"] == "2.3.2"
 
 
 async def test_card_is_registered_once(hass: HomeAssistant, fake_frontend) -> None:

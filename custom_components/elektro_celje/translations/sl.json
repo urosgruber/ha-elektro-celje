@@ -14,7 +14,7 @@
           "name": "Ime lokacije, na primer Doma.",
           "region": "Regija, katere vir spremljate. Če niste prepričani, izberite Vse regije.",
           "station": "Izberite ime s seznama ali vpišite točno ime postaje, kot ga zapišejo obvestila, brez TP. Ujemanje prezre samo velike črke, naglase in presledke. Del imena se ne ujema. Seznam prikaže imena postaj, ki so zdaj v virih.",
-          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Izbrani so vsi telefoni. Če seznam počistite, so obvestila izklopljena."
+          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Dodajte želene telefone. Brez telefonov lokacija ne pošilja obvestil."
         }
       },
       "reconfigure": {
@@ -59,7 +59,7 @@
           "quiet_to": "Tihi čas do"
         },
         "data_description": {
-          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Če seznam počistite, so obvestila izklopljena.",
+          "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Če odstranite vse telefone, so obvestila izklopljena.",
           "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan. Opomnik ne upošteva tihega časa: pride ob tej uri.",
           "quiet_hours": "Ponoči obvestila počakajo. Pridejo, ko se tihi čas konča. Obvestilo o izklopu, ki se začne pred koncem tihega časa, pride takoj. Dogodki nikoli ne čakajo.",
           "quiet_from": "Začetek tihega časa.",

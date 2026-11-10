@@ -110,7 +110,7 @@ def _phones_selector(phones: Mapping[str, str]) -> SelectSelector:
                 for name, label in phones.items()
             ],
             multiple=True,
-            mode=SelectSelectorMode.LIST,
+            mode=SelectSelectorMode.DROPDOWN,
         )
     )
 
@@ -136,7 +136,7 @@ def _schema(
     phones: Mapping[str, str] | None = None,
 ) -> vol.Schema:
     extra = (
-        _phones_field(phones, list(defaults.get(CONF_NOTIFY_TARGETS, list(phones))))
+        _phones_field(phones, list(defaults.get(CONF_NOTIFY_TARGETS, [])))
         if phones is not None
         else {}
     )

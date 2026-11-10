@@ -14,7 +14,7 @@
           "name": "The name of the location, for example Home.",
           "region": "The region feed to watch. Choose All regions if you are not sure.",
           "station": "Choose a name from the list, or type the exact station name as the notices write it, without TP. The match ignores case, accents and spacing only. A part of the name does not match. The list shows the station names that are in the feeds now.",
-          "notify_targets": "The phones that get a notification about the outages of this location. All phones are selected. Clear the list to turn the notifications off."
+          "notify_targets": "The phones that get a notification about the outages of this location. Add the phones that you want. With no phones, the location sends no notifications."
         }
       },
       "reconfigure": {
@@ -59,7 +59,7 @@
           "quiet_to": "Quiet until"
         },
         "data_description": {
-          "notify_targets": "The phones that get a notification about the outages of this location. Clear the list to turn the notifications off.",
+          "notify_targets": "The phones that get a notification about the outages of this location. Remove all phones to turn the notifications off.",
           "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day. The reminder ignores the quiet hours: it arrives at this time.",
           "quiet_hours": "At night the notifications wait. They arrive when the quiet hours end. A notification about an outage that starts before the end arrives at once. The events never wait.",
           "quiet_from": "The start of the quiet hours.",
