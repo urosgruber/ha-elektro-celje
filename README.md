@@ -2,8 +2,9 @@
 
 A Home Assistant integration for the planned power outages of Elektro Celje.
 It reads the public RSS feeds of Elektro Celje. It finds the outages that
-concern your transformer station (TP). It sends an alert when an outage is
-new, when it changes, when it is no longer listed, and on the day before.
+concern your transformer station (TP). It sends a notification to your
+phones when an outage is new, when it changes, when it is no longer listed,
+and on the day before.
 
 This is an unofficial integration. It is not made or supported by Elektro
 Celje. It reads their public RSS feeds.
@@ -34,6 +35,10 @@ Set up each location in the UI.
 1. Open **Settings > Devices & services > Add integration**.
 2. Select **Elektro Celje Obvestila o izklopih**.
 3. Enter a name, the region and the station query for the location.
+   **Notify phones** lists the phones of the Home Assistant Companion app.
+   All phones are selected. Keep them, or clear the list for no
+   notifications.
+4. Check the planned outages for the station, and select **Submit**.
 
 Add the integration once for each location. A location is one station.
 
@@ -53,6 +58,88 @@ in the feeds only while it has a planned outage. If your station is not in the
 list, type its name.
 
 The reminder time is an option of each location. The default is 18:00.
+The reminder ignores the quiet hours. It arrives at the reminder time that
+you choose.
+
+## Notifications
+
+The integration sends the notifications itself. You need no automation and
+no blueprint. Each location sends to its own phones.
+
+- **Phones**: a phone is a `notify.mobile_app_*` action of the Companion app.
+  A new location selects all phones. A location without phones sends no
+  notification. A location that you added before 2.3.0 has no phones. To turn
+  its notifications on, open the options of the location and select the
+  phones.
+- **Alerts**: a new outage, a reminder on the day before, a changed outage and
+  a removed outage. The texts are in Slovenian when the language of Home
+  Assistant is Slovenian. Otherwise they are in English. The texts are the
+  built-in texts of the blueprint.
+- **Tag**: a later notification of the same outage replaces the earlier one on
+  the phone. Two outages of one notice give two notifications.
+
+To change the phones, open **Settings > Devices & services > Elektro Celje
+Obvestila o izklopih**, select the location, and select **Configure**.
+
+### Quiet hours
+
+Quiet hours are on by default, from 22:00 to 07:00. During the quiet hours,
+a notification waits. It arrives when the quiet hours end.
+
+- The reminder never waits. You chose its time, so it arrives at that time,
+  also during the quiet hours. It does not replace a waiting notification.
+  If the reminder time is inside the quiet hours, a waiting "new outage"
+  notification of the same outage can replace the reminder on the phone when
+  the quiet hours end, because both use the same tag.
+- A notification about an outage that starts before the quiet hours end
+  arrives at once.
+- A notification about an outage with an unknown start waits.
+- When a later alert of the same outage arrives during the quiet hours, it
+  replaces the waiting one. A new outage that is removed again during the
+  quiet hours sends nothing. A new outage that changes during the quiet hours
+  sends one "new outage" notification with the new time.
+- When the quiet hours end, a notification about an outage that has already
+  ended is dropped.
+- The waiting notifications survive a restart of Home Assistant.
+- If the start and the end are the same time, no time is quiet.
+
+The events of the integration never wait. Your own automations get them at
+once.
+
+### Delivery
+
+Each notification is sent at most once. The integration saves its state
+first, then it sends. If Home Assistant stops between the save and the send,
+that notification is lost. It is not sent again after the restart. The
+integration does not repeat a send that a phone did not accept. It writes a
+warning to the log instead.
+
+### Switches
+
+Each location has four switches in the **Configuration** group of its device:
+**Notify: new outage**, **Notify: reminder**, **Notify: changed outage** and
+**Notify: removed outage**. All are on by default. A switch that is off stops that kind of notification for
+the location. The events still fire.
+
+### Advanced: a quiet hours entity
+
+The options have a collapsed section **Advanced**. There you can choose a
+quiet hours entity: a Schedule helper, a Toggle helper (`input_boolean`) or a
+binary sensor. The entity replaces the times. The notifications wait while
+its state is `on`. They arrive when its state changes from `on` to a real
+state, such as `off`. While the entity is missing, `unknown` or
+`unavailable`, for example during a restart, the notifications keep waiting.
+If the entity is still in that state 10 minutes after Home Assistant starts,
+the integration treats it as not quiet and sends the notifications.
+
+A Schedule helper is the easiest choice. It can have other quiet hours on
+each day of the week. It also tells the integration when the quiet hours end,
+so an outage that starts before then arrives at once. A Toggle helper or a
+binary sensor does not tell the end. With such an entity, the notifications
+wait until its state changes from `on`, even if the outage has already
+started. Use a Schedule helper to avoid this.
+
+The **Quiet hours** option must be on, also for the entity.
 
 ## Entities
 
@@ -70,6 +157,7 @@ device.
 | `binary_sensor.<location>_outage_planned` | On when at least one outage is planned. |
 | `binary_sensor.<location>_outage_now` | On while the power is off. |
 | `binary_sensor.<location>_feed_problem` | On when a feed cannot be read. The `problem_since` attribute holds the start of the problem. Diagnostic. |
+| `switch.<location>_notify_new_outage`, `_notify_reminder`, `_notify_changed_outage`, `_notify_removed_outage` | Turn one kind of notification on or off. Configuration. |
 | `calendar.<location>_planned_outages` | The outages as calendar events. An outage that has ended stays in the calendar while the notice is in the feed. |
 
 Entity IDs follow the names in your language. Check them in
@@ -86,10 +174,17 @@ outages with the status `ok` or `date_only`. The notice must still be in the
 feed. The list is empty after local midnight. The attribute is not recorded
 in the history.
 
-## Events
+## Advanced: blueprint and events
 
-The integration fires these events. It does not send notifications by itself.
-Each event fires once for each outage.
+Use the events and the blueprint when you want more than the built-in
+notifications: your own texts, other actions, or notifications for some
+locations only. If you use the blueprint, clear the phones of the location in
+its options. Otherwise each phone gets two notifications.
+
+### Events
+
+The integration fires these events. The phones, the quiet hours and the
+switches do not change them. Each event fires once for each outage.
 
 | Event | When |
 |---|---|
@@ -122,7 +217,7 @@ Payload of every event:
 The wording for `removed` is "no longer listed". The feed does not say why a
 notice disappears.
 
-## Notification blueprint
+### Notification blueprint
 
 The blueprint sends a mobile app notification for the four events. You select
 the phone and the events. The notification tag is the config entry ID and the
@@ -150,7 +245,7 @@ The blueprint needs Home Assistant 2024.10.0 or newer. The old inputs keep
 their names and meaning. An automation that you made with an earlier version
 works unchanged and gives the same Slovenian texts.
 
-### Texts
+#### Texts
 
 **Language** is `Slovenščina` (default) or `English`. English example:
 "Planned power outage" and "TP lopata: 12 Nov 2026, 08:00–14:00 (6 h)".
@@ -331,6 +426,12 @@ issue. They contain your station name.
 
 Pull requests are welcome. Run `ruff check .`, `ruff format --check .` and
 `pytest -q` before you open one.
+
+## Changelog
+
+- 2.3.0: built-in phone notifications for each location, with quiet hours,
+  four switches and an optional quiet hours entity. The blueprint stays as an
+  advanced option.
 
 ## License
 

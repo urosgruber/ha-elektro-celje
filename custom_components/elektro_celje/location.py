@@ -9,14 +9,23 @@ from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
-from homeassistant.helpers.event import async_track_point_in_utc_time
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import restore_state
+from homeassistant.helpers.event import (
+    EventStateChangedData,
+    async_call_later,
+    async_track_point_in_utc_time,
+    async_track_state_change_event,
+)
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .alerts import OutageRecord, evaluate, event_payload, event_type
+from .alerts import AlertEvent, OutageRecord, evaluate, event_payload, event_type
 from .const import (
+    ALERT_KINDS,
     CONF_REMINDER_TIME,
     CONF_STATION,
     DEFAULT_REMINDER_TIME,
@@ -26,11 +35,26 @@ from .const import (
 )
 from .coordinator import RegionCoordinator
 from .models import Outage
+from .notifications import (
+    UNKNOWN_STATES,
+    NotifySettings,
+    QuietState,
+    async_send,
+    has_ended,
+    make_item,
+    merge,
+    quiet_state,
+    starts_before,
+    valid_item,
+)
 from .outages import build_outages, is_planned, next_boundary
 
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
+# A quiet entity that is still missing, unknown or unavailable this long after
+# the start of Home Assistant counts as "not quiet", so the queue cannot stick.
+QUIET_ENTITY_GRACE = timedelta(minutes=10)
 
 
 def _store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
@@ -40,6 +64,11 @@ def _store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
 async def async_clear_alert_state(hass: HomeAssistant, entry_id: str) -> None:
     """Remove the stored alert records of a config entry."""
     await _store(hass, entry_id).async_remove()
+
+
+def switch_unique_id(entry_id: str, kind: str) -> str:
+    """Return the unique ID of the notification switch of an alert kind."""
+    return f"{entry_id}_notify_{kind}"
 
 
 def reminder_time(entry: ConfigEntry) -> time:
@@ -116,8 +145,22 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         self.regions = regions
         self.query: str = entry.data[CONF_STATION]
         self.reminder = reminder_time(entry)
+        # A change of any option reloads the entry (see the update listener).
+        self.options: dict[str, Any] = dict(entry.options)
+        self.notify = NotifySettings.from_options(entry.options)
+        # The notification switches write here. They gate sending only.
+        self.notify_enabled: dict[str, bool] = dict.fromkeys(ALERT_KINDS, True)
         self._store = _store(hass, entry.entry_id)
         self._records: dict[str, OutageRecord] = {}
+        # Alerts that wait for the end of the quiet hours, by outage key.
+        self._held: dict[str, dict[str, Any]] = {}
+        self._unsub_flush: CALLBACK_TYPE | None = None
+        self._unsub_quiet_entity: CALLBACK_TYPE | None = None
+        self._unsub_grace: CALLBACK_TYPE | None = None
+        self._entity_grace = True
+        # True once the quiet entity has reported a real state since load.
+        # After that, a missing or unknown state always keeps holding.
+        self._entity_seen = False
         self._lock = asyncio.Lock()
         self._closed = False
         self._unsub_timer: CALLBACK_TYPE | None = None
@@ -134,10 +177,69 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                     _LOGGER.warning("Skipping a stored record that is not valid")
                     continue
                 self._records[record.key] = record
+            held = stored.get("held") or {}
+            if isinstance(held, dict):
+                self._held = {
+                    key: item for key, item in held.items() if valid_item(item)
+                }
+        self._restore_switches()
+        if self.notify.quiet_hours and self.notify.quiet_entity:
+            state = self.hass.states.get(self.notify.quiet_entity)
+            self._entity_seen = state is not None and state.state not in UNKNOWN_STATES
+            self._unsub_quiet_entity = async_track_state_change_event(
+                self.hass, [self.notify.quiet_entity], self._handle_quiet_entity
+            )
+            if self.hass.is_running:
+                self._start_grace()
+            else:
+                self._unsub_grace = self.hass.bus.async_listen_once(
+                    EVENT_HOMEASSISTANT_STARTED, self._handle_started
+                )
         self._unsub_regions = [
             region.async_add_listener(self._handle_region_update)
             for region in self.regions
         ]
+
+    def _restore_switches(self) -> None:
+        """Read the last switch states before the first refresh.
+
+        The switch entities restore themselves later, after the first refresh.
+        The first refresh must already respect a switch that the user turned off.
+        """
+        registry = er.async_get(self.hass)
+        last_states = restore_state.async_get(self.hass).last_states
+        for kind in ALERT_KINDS:
+            entity_id = registry.async_get_entity_id(
+                "switch", DOMAIN, switch_unique_id(self.config_entry.entry_id, kind)
+            )
+            stored = last_states.get(entity_id) if entity_id else None
+            if stored is not None:
+                self.notify_enabled[kind] = stored.state.state != "off"
+
+    @callback
+    def _handle_started(self, _event: Event) -> None:
+        self._unsub_grace = None
+        self._start_grace()
+
+    @callback
+    def _start_grace(self) -> None:
+        self._unsub_grace = async_call_later(
+            self.hass, QUIET_ENTITY_GRACE, self._handle_grace_over
+        )
+
+    @callback
+    def _handle_grace_over(self, _now: datetime) -> None:
+        self._unsub_grace = None
+        self._entity_grace = False
+        self.config_entry.async_create_task(
+            self.hass, self.async_flush(), f"{self.name} flush"
+        )
+
+    def _quiet(self, now: datetime) -> QuietState:
+        # The fallback "unknown is not quiet" applies only to an entity that
+        # has never reported a real state since load.
+        unknown_is_quiet = self._entity_grace or self._entity_seen
+        return quiet_state(self.hass, self.notify, now, unknown_is_quiet)
 
     @callback
     def _handle_region_update(self) -> None:
@@ -178,14 +280,14 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                     self._records, outages, now, ok_regions, self.reminder
                 )
                 self._records = records
+                to_send: list[dict[str, Any]] = []
                 if self._closed:
                     # Shut down: another refresh owns the store now.
                     events = []
                 else:
+                    to_send = self._route(events, now)
                     # Save before firing, so a crash between them cannot fire again.
-                    await self._store.async_save(
-                        {"records": [r.to_dict() for r in records.values()]}
-                    )
+                    await self._async_save()
                 location = self.config_entry.title
                 entry_id = self.config_entry.entry_id
                 for event in events:
@@ -193,12 +295,134 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                         event_type(event.kind),
                         event_payload(event, location, entry_id),
                     )
+                self._start_send(to_send)
+                self._arm_flush(now)
                 return self._location_data(
                     outages, self._planned(records, now), records
                 )
             finally:
                 # A failed run still schedules the next boundary.
                 self._schedule_boundary(self._planned(self._records, now), now)
+
+    async def _async_save(self) -> None:
+        await self._store.async_save(
+            {
+                "records": [r.to_dict() for r in self._records.values()],
+                "held": self._held,
+            }
+        )
+
+    # --- Notifications -----------------------------------------------------
+
+    def _route(self, events: list[AlertEvent], now: datetime) -> list[dict[str, Any]]:
+        """Hold or pass each alert. Return the alerts to send now.
+
+        The events themselves fire in any case. This decides the phones only.
+        """
+        if not self.notify.targets:
+            return []
+        quiet = self._quiet(now)
+        location = self.config_entry.title
+        entry_id = self.config_entry.entry_id
+        to_send: list[dict[str, Any]] = []
+        for event in events:
+            new = make_item(event.kind, event_payload(event, location, entry_id))
+            if event.kind == "reminder":
+                # The user chose the reminder time: it ignores the quiet hours.
+                # It never enters or replaces the hold queue.
+                if self.notify_enabled["reminder"]:
+                    to_send.append(new)
+                continue
+            key = event.record.key
+            item = merge(self._held.pop(key, None), new)
+            if item is None or not self.notify_enabled[item["kind"]]:
+                continue
+            # An outage that starts before the quiet hours end cannot wait.
+            if quiet.quiet and not starts_before(item, quiet.end):
+                self._held[key] = item
+            else:
+                to_send.append(item)
+        return to_send
+
+    @callback
+    def _start_send(self, items: list[dict[str, Any]]) -> None:
+        if not items:
+            return
+        self.config_entry.async_create_task(
+            self.hass, self._async_send(items), f"{self.name} notify"
+        )
+
+    async def _async_send(self, items: list[dict[str, Any]]) -> None:
+        entry_id = self.config_entry.entry_id
+        for item in items:
+            # The user can turn a switch off while an alert waits.
+            if not self.notify_enabled[item["kind"]]:
+                continue
+            await async_send(self.hass, self.notify.targets, entry_id, item)
+
+    @callback
+    def _arm_flush(self, now: datetime) -> None:
+        """Send the held alerts now, or set a timer for the end of the quiet hours.
+
+        In entity mode the state listener flushes. It needs no timer.
+        """
+        if self._unsub_flush is not None:
+            self._unsub_flush()
+            self._unsub_flush = None
+        if not self._held or self._closed or self._shutdown_requested:
+            return
+        quiet = self._quiet(now)
+        if not quiet.quiet:
+            self.config_entry.async_create_task(
+                self.hass, self.async_flush(), f"{self.name} flush"
+            )
+        elif not self.notify.quiet_entity and quiet.end is not None:
+            # Never a moment in the past: that would loop the timer.
+            when = max(quiet.end, now + timedelta(seconds=1))
+            self._unsub_flush = async_track_point_in_utc_time(
+                self.hass, self._handle_flush_time, when
+            )
+
+    @callback
+    def _handle_flush_time(self, _now: datetime) -> None:
+        self._unsub_flush = None
+        self.config_entry.async_create_task(
+            self.hass, self.async_flush(), f"{self.name} flush"
+        )
+
+    @callback
+    def _handle_quiet_entity(self, event: Event[EventStateChangedData]) -> None:
+        """Flush on a real state that is not "on".
+
+        A missing, unknown or unavailable state keeps holding (see `_quiet`).
+        """
+        new_state = event.data["new_state"]
+        if new_state is None or new_state.state in UNKNOWN_STATES:
+            return
+        self._entity_seen = True
+        if new_state.state == "on":
+            return
+        self.config_entry.async_create_task(
+            self.hass, self.async_flush(), f"{self.name} flush"
+        )
+
+    async def async_flush(self) -> None:
+        """Send the held alerts if the quiet hours are over.
+
+        An alert of an outage that has already ended is dropped.
+        """
+        async with self._lock:
+            if self._closed or not self._held:
+                return
+            now = dt_util.utcnow()
+            if self._quiet(now).quiet:
+                self._arm_flush(now)
+                return
+            items = [i for i in self._held.values() if not has_ended(i, now)]
+            self._held = {}
+            await self._async_save()
+        if self.notify.targets:
+            await self._async_send(items)
 
     @staticmethod
     def _planned(records: dict[str, OutageRecord], now: datetime) -> list[Outage]:
@@ -256,6 +480,15 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         if self._unsub_timer is not None:
             self._unsub_timer()
             self._unsub_timer = None
+        if self._unsub_flush is not None:
+            self._unsub_flush()
+            self._unsub_flush = None
+        if self._unsub_quiet_entity is not None:
+            self._unsub_quiet_entity()
+            self._unsub_quiet_entity = None
+        if self._unsub_grace is not None:
+            self._unsub_grace()
+            self._unsub_grace = None
         for unsub in self._unsub_regions:
             unsub()
         self._unsub_regions = []

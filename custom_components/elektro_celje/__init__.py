@@ -15,11 +15,16 @@ from homeassistant.loader import async_get_integration
 
 from .const import ALL_REGIONS, CONF_REGION, DOMAIN, REGIONS
 from .coordinator import RegionCoordinator, async_acquire_region, async_release_region
-from .location import LocationCoordinator, async_clear_alert_state, reminder_time
+from .location import LocationCoordinator, async_clear_alert_state
 
 type ElektroCeljeConfigEntry = ConfigEntry[LocationCoordinator]
 
-PLATFORMS: list[Platform] = [Platform.SENSOR, Platform.BINARY_SENSOR, Platform.CALENDAR]
+PLATFORMS: list[Platform] = [
+    Platform.SENSOR,
+    Platform.BINARY_SENSOR,
+    Platform.CALENDAR,
+    Platform.SWITCH,
+]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -106,11 +111,13 @@ async def async_remove_entry(
 async def _async_update_listener(
     hass: HomeAssistant, entry: ElektroCeljeConfigEntry
 ) -> None:
-    """Reload the entry when the reminder time changes.
+    """Reload the entry when an option changes.
 
-    Other updates, such as a reconfigure, reload the entry themselves.
+    The reload reads the new phones, reminder time and quiet hours, and checks
+    the held alerts again. Other updates, such as a reconfigure, reload the
+    entry themselves.
     """
     coordinator = getattr(entry, "runtime_data", None)
-    if coordinator is None or coordinator.reminder == reminder_time(entry):
+    if coordinator is None or coordinator.options == dict(entry.options):
         return
     await hass.config_entries.async_reload(entry.entry_id)
