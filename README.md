@@ -88,6 +88,9 @@ a notification waits. It arrives when the quiet hours end.
 
 - The reminder never waits. You chose its time, so it arrives at that time,
   also during the quiet hours. It does not replace a waiting notification.
+  If the reminder time is inside the quiet hours, a waiting "new outage"
+  notification of the same outage can replace the reminder on the phone when
+  the quiet hours end, because both use the same tag.
 - A notification about an outage that starts before the quiet hours end
   arrives at once.
 - A notification about an outage with an unknown start waits.

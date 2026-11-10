@@ -158,6 +158,9 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         self._unsub_quiet_entity: CALLBACK_TYPE | None = None
         self._unsub_grace: CALLBACK_TYPE | None = None
         self._entity_grace = True
+        # True once the quiet entity has reported a real state since load.
+        # After that, a missing or unknown state always keeps holding.
+        self._entity_seen = False
         self._lock = asyncio.Lock()
         self._closed = False
         self._unsub_timer: CALLBACK_TYPE | None = None
@@ -181,6 +184,8 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                 }
         self._restore_switches()
         if self.notify.quiet_hours and self.notify.quiet_entity:
+            state = self.hass.states.get(self.notify.quiet_entity)
+            self._entity_seen = state is not None and state.state not in UNKNOWN_STATES
             self._unsub_quiet_entity = async_track_state_change_event(
                 self.hass, [self.notify.quiet_entity], self._handle_quiet_entity
             )
@@ -231,7 +236,10 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         )
 
     def _quiet(self, now: datetime) -> QuietState:
-        return quiet_state(self.hass, self.notify, now, self._entity_grace)
+        # The fallback "unknown is not quiet" applies only to an entity that
+        # has never reported a real state since load.
+        unknown_is_quiet = self._entity_grace or self._entity_seen
+        return quiet_state(self.hass, self.notify, now, unknown_is_quiet)
 
     @callback
     def _handle_region_update(self) -> None:
@@ -389,7 +397,10 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         A missing, unknown or unavailable state keeps holding (see `_quiet`).
         """
         new_state = event.data["new_state"]
-        if new_state is None or new_state.state in ("on", *UNKNOWN_STATES):
+        if new_state is None or new_state.state in UNKNOWN_STATES:
+            return
+        self._entity_seen = True
+        if new_state.state == "on":
             return
         self.config_entry.async_create_task(
             self.hass, self.async_flush(), f"{self.name} flush"

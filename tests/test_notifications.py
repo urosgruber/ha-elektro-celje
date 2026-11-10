@@ -1012,3 +1012,32 @@ async def test_options_form_keeps_stale_phone_visible(hass, phones) -> None:
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options[CONF_NOTIFY_TARGETS] == ["mobile_app_pixel"]
+
+
+async def test_unavailable_blip_after_grace_keeps_holding(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    """A seen entity that turns unavailable at 02:00 keeps holding new alerts."""
+    freezer.move_to(_local(8, 23, 0))
+    aioclient_mock.get(VELENJE, text=EMPTY_FEED)
+    hass.states.async_set("binary_sensor.night", "on")
+    entry = _entry({**ON_PIXEL, CONF_QUIET_ENTITY: "binary_sensor.night"})
+    coordinator = await _setup(hass, entry)
+    await _move(hass, freezer, _local(8, 23, 11))  # The grace period is over.
+    assert coordinator._entity_grace is False
+
+    freezer.move_to(_local(9, 2, 0))
+    hass.states.async_set("binary_sensor.night", "unavailable")
+    await hass.async_block_till_done()
+    # A refresh with a new alert: it is held, nothing is flushed.
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    await _move(hass, freezer, _local(9, 2, 16))
+    assert list(coordinator._held) == ["43322:0"]
+    assert phones["mobile_app_pixel"] == []
+
+    hass.states.async_set("binary_sensor.night", "off")
+    await hass.async_block_till_done()
+    assert len(phones["mobile_app_pixel"]) == 1
+    assert coordinator._held == {}
+    await _unload(hass, entry)
