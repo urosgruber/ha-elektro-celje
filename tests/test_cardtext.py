@@ -146,6 +146,7 @@ def test_labels_footer_problem_english() -> None:
     )
     assert result["card_labels"]["also_planned"] == "Also planned"
     assert result["card_labels"]["ended_today"] == "Ended today"
+    assert result["card_labels"]["nothing_planned"] == "No planned outages"
     assert result["card_footer"] == "Checked Mon 9 Nov 2026, 12:23 · elektro-celje.si"
     assert result["card_problem"] == (
         "Cannot read the Elektro Celje feed. Last good check: today 12:23. "
@@ -191,6 +192,7 @@ def test_slovenian() -> None:
     )
     assert by_key["ves dan · čez 4 dni"]["title"] == "pet 13. nov · ves dan"
     assert result["card_labels"]["ended_today"] == "Danes končani izklopi"
+    assert result["card_labels"]["nothing_planned"] == "Ni načrtovanih izklopov"
     assert result["card_labels"]["also_planned"] == "Še načrtovani izklopi"
     assert result["card_footer"].startswith("Preverjeno pon 9. nov 2026, 12:23")
     assert "Zadnje uspešno preverjanje: danes 12:23." in result["card_problem"]

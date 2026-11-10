@@ -14,6 +14,13 @@ class FakeNode {
       this.children.push(typeof n === "string" ? new FakeText(n) : n);
     }
   }
+  appendChild(node) {
+    this.children.push(node);
+    return node;
+  }
+  addEventListener(type, handler) {
+    (this.listeners ??= {})[type] = handler;
+  }
   replaceChildren(...nodes) {
     this.children = [];
     this.append(...nodes);
@@ -68,7 +75,9 @@ globalThis.CustomEvent = class {
     Object.assign(this, init);
   }
 };
-globalThis.document = { createElement: (tag) => new FakeNode(tag) };
+globalThis.document = {
+  createElement: (tag) => (registry.has(tag) ? new (registry.get(tag))() : new FakeNode(tag)),
+};
 
 await import("../../custom_components/elektro_celje/frontend/elektro-celje-card.js");
 const Card = registry.get("elektro-celje-card");
@@ -117,6 +126,71 @@ test("the card registers in the card picker", () => {
   assert.deepEqual(Card.getStubConfig(), {});
   const entry = window.customCards.find((c) => c.type === "elektro-celje-card");
   assert.equal(entry.name, "Elektro Celje outages");
+  assert.equal(entry.preview, true);
+});
+
+test("show_empty draws the empty text and the footer", () => {
+  const card = new Card();
+  card.setConfig({ show_empty: true });
+  card.hass = hass([]);
+  assert.equal(card.hidden, false);
+  assert.equal(card.shadowRoot.find("empty")[0].textContent, "No planned outages");
+  assert.match(card.shadowRoot.find("footer")[0].textContent, /^Checked/);
+});
+
+test("a config change renders the card again", () => {
+  const card = new Card();
+  card.setConfig({});
+  // Far in the future, so the result does not depend on the test date.
+  const far = [
+    { ...NEXT, sort: "2099-01-01T12:00:00+00:00" },
+    { ...LATER, sort: "2099-01-02T12:00:00+00:00" },
+  ];
+  card.hass = hass(far);
+  assert.equal(card.shadowRoot.find("banner").length, 1);
+  assert.equal(card.shadowRoot.find("row").length, 1);
+  card.setConfig({ days_ahead: 7 });
+  assert.equal(card.hidden, true);
+  assert.equal(card.shadowRoot.find("row").length, 0);
+});
+
+test("setConfig rejects devices that are not a list", () => {
+  const card = new Card();
+  assert.throws(() => card.setConfig({ devices: "abc" }), /list/);
+});
+
+test("the editor shows the five options and writes a short config", () => {
+  const editor = Card.getConfigElement();
+  assert.ok(editor instanceof registry.get("elektro-celje-card-editor"));
+  editor.setConfig({ type: "custom:elektro-celje-card" });
+  editor.hass = { language: "sl", ...hass([]) };
+  const [form] = editor.children;
+  assert.deepEqual(
+    form.schema.map((f) => f.name),
+    ["devices", "title", "days_ahead", "show_empty", "show_ended"],
+  );
+  assert.deepEqual(form.schema[0].selector, {
+    device: { integration: "elektro_celje", multiple: true },
+  });
+  assert.equal(form.computeLabel({ name: "devices" }), "Lokacije");
+  assert.deepEqual(form.data, {
+    type: "custom:elektro-celje-card",
+    show_empty: false,
+    show_ended: true,
+  });
+  editor.events = [];
+  editor.dispatchEvent = (e) => editor.events.push(e);
+  form.listeners["value-changed"]({
+    detail: {
+      value: { devices: ["dev1"], title: "", days_ahead: 7, show_empty: false, show_ended: false },
+    },
+  });
+  assert.deepEqual(editor.events[0].detail.config, {
+    type: "custom:elektro-celje-card",
+    devices: ["dev1"],
+    days_ahead: 7,
+    show_ended: false,
+  });
 });
 
 test("the card hides itself when nothing is planned", () => {

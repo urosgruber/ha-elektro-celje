@@ -51,6 +51,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "min": "min",
         "also_planned": "Also planned",
         "ended_today": "Ended today",
+        "nothing_planned": "No planned outages",
         "checked": "Checked",
         "feed_error": "Cannot read the Elektro Celje feed.",
         "last_good": "Last good check: {when}.",
@@ -95,6 +96,7 @@ TEXTS: dict[str, dict[str, Any]] = {
         "min": "min",
         "also_planned": "Še načrtovani izklopi",
         "ended_today": "Danes končani izklopi",
+        "nothing_planned": "Ni načrtovanih izklopov",
         "checked": "Preverjeno",
         "feed_error": "Podatkov Elektro Celje ni mogoče prebrati.",
         "last_good": "Zadnje uspešno preverjanje: {when}.",
@@ -272,6 +274,7 @@ def build_card(
         "card_labels": {
             "also_planned": t["also_planned"],
             "ended_today": t["ended_today"],
+            "nothing_planned": t["nothing_planned"],
             "now": t["now"],
             "ends_in": t["ends_in"],
             "hours_minutes": t["hours_minutes"],

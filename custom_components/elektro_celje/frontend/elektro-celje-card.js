@@ -7,6 +7,76 @@
 
 const PLATFORM = "elektro_celje";
 const CARD_TYPE = "elektro-celje-card";
+const EDITOR_TYPE = "elektro-celje-card-editor";
+// The integration gives this sort value to an outage without a known start.
+const UNKNOWN_SORT = "9999-12-31T00:00:00+00:00";
+
+const EDITOR_TEXTS = {
+  en: {
+    devices: "Locations",
+    devicesHelp: "Leave empty to show all locations.",
+    title: "Title",
+    days_ahead: "Days ahead",
+    days_aheadHelp: "Show outages from today up to this many days ahead. Leave empty to show all.",
+    show_empty: "Show when nothing is planned",
+    show_emptyHelp: "Otherwise the card hides itself.",
+    show_ended: "Show the outages that ended today",
+    nothingPlanned: "No planned outages",
+  },
+  sl: {
+    devices: "Lokacije",
+    devicesHelp: "Pustite prazno za vse lokacije.",
+    title: "Naslov",
+    days_ahead: "Dni vnaprej",
+    days_aheadHelp: "Prikaži izklope od danes do toliko dni vnaprej. Pustite prazno za vse.",
+    show_empty: "Prikaži, ko ni načrtovanih izklopov",
+    show_emptyHelp: "Sicer se kartica skrije.",
+    show_ended: "Prikaži danes končane izklope",
+    nothingPlanned: "Ni načrtovanih izklopov",
+  },
+};
+
+function editorTexts(lang) {
+  return String(lang || "").toLowerCase().startsWith("sl")
+    ? EDITOR_TEXTS.sl
+    : EDITOR_TEXTS.en;
+}
+
+/**
+ * Return the card options with their defaults.
+ *
+ * devices: the device IDs of the locations to show; empty means all.
+ * daysAhead: show "next" outages that start up to this many days after
+ * today; null means all. showEmpty: show the card when nothing is planned.
+ * showEnded: show the outages that ended today.
+ */
+export function cardOptions(config = {}) {
+  const days = Number(config.days_ahead);
+  return {
+    devices: Array.isArray(config.devices) ? config.devices.filter(Boolean) : [],
+    daysAhead:
+      config.days_ahead === undefined || config.days_ahead === null || config.days_ahead === "" ||
+      !Number.isFinite(days) || days < 0
+        ? null
+        : Math.floor(days),
+    showEmpty: config.show_empty === true,
+    showEnded: config.show_ended !== false,
+  };
+}
+
+function localDay(time) {
+  const d = new Date(time);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+
+// True when the outage starts later than daysAhead days after today.
+function beyond(item, daysAhead, now) {
+  if (daysAhead === null || item.sort === UNKNOWN_SORT) return false;
+  const start = Date.parse(item.sort ?? "");
+  if (Number.isNaN(start)) return false;
+  const days = Math.round((localDay(start) - localDay(now)) / 86400000);
+  return days > daysAhead;
+}
 
 function itemsOf(attributes) {
   return Array.isArray(attributes.card) ? attributes.card : [];
@@ -66,10 +136,15 @@ function stamp(value) {
   return Number.isNaN(time) ? null : time;
 }
 
-/** Return the entity IDs of the integration that have card attributes. */
-export function cardEntities(states, entities) {
+/**
+ * Return the entity IDs of the integration that have card attributes.
+ *
+ * With a list of device IDs, return only the entities of those locations.
+ */
+export function cardEntities(states, entities, devices = []) {
   return Object.keys(entities ?? {})
     .filter((eid) => entities[eid]?.platform === PLATFORM)
+    .filter((eid) => !devices.length || devices.includes(entities[eid]?.device_id))
     .filter((eid) => states?.[eid]?.attributes?.card !== undefined)
     .sort();
 }
@@ -81,15 +156,22 @@ export function cardEntities(states, entities) {
  * Each other live outage has its own banner. The list shows the other
  * planned outages, grouped by day. The banner outage is not in the list.
  */
-export function buildModel(states, entities, now = Date.now()) {
+export function buildModel(states, entities, now = Date.now(), config = {}) {
+  const options = cardOptions(config);
   const items = [];
   let problem = null;
   let labels = {};
   let footer = null;
   let oldest = null;
-  for (const eid of cardEntities(states, entities)) {
+  for (const eid of cardEntities(states, entities, options.devices)) {
     const attributes = states[eid].attributes;
-    items.push(...itemsOf(attributes));
+    items.push(
+      ...itemsOf(attributes).filter(
+        (i) =>
+          (i.group !== "next" || !beyond(i, options.daysAhead, now)) &&
+          (i.group !== "ended" || options.showEnded),
+      ),
+    );
     if (!problem && attributes.card_problem) {
       problem = {
         title: attributes.card_problem_title || attributes.card_problem,
@@ -111,7 +193,8 @@ export function buildModel(states, entities, now = Date.now()) {
   const live = items.filter((i) => i.group === "live").sort(bySort);
   const next = items.filter((i) => i.group === "next").sort(bySort);
   const ended = items.filter((i) => i.group === "ended").sort(bySort);
-  const hidden = items.length === 0 && !problem;
+  const nothing = items.length === 0 && !problem;
+  const hidden = nothing && !options.showEmpty;
 
   const banners = live.map((i) => liveBanner(i, labels, now));
   if (!live.length && next.length) banners.push(banner("next", next[0]));
@@ -132,6 +215,10 @@ export function buildModel(states, entities, now = Date.now()) {
 
   return {
     hidden,
+    // With show_empty, the card says "No planned outages" instead of hiding.
+    empty: nothing && options.showEmpty
+      ? labels.nothing_planned || EDITOR_TEXTS.en.nothingPlanned
+      : null,
     countdown: live.some((i) => i.end),
     problem,
     banners,
@@ -236,6 +323,8 @@ const STYLE = `
   .ended { font-size: 12px; color: var(--secondary-text-color); }
   .ended .sec { font-size: 11px; }
   .ended .done { margin-top: 4px; }
+  .empty { color: var(--secondary-text-color); }
+  .content > .empty + .footer { margin-top: 4px; }
   .footer { font-size: 12px; color: var(--secondary-text-color); margin-top: 10px; }
   .placeholder {
     padding: 16px;
@@ -254,6 +343,7 @@ function el(tag, className, text) {
 
 function renderContent(model) {
   const content = el("div", "content");
+  if (model.empty) content.append(el("div", "empty", model.empty));
   if (model.problem) {
     const node = el("div", "banner problem", `⚠ ${model.problem.title}`);
     if (model.problem.detail) node.append(el("small", "", model.problem.detail));
@@ -332,7 +422,7 @@ function defineCard() {
 
     _tick() {
       if (!this._hass) return;
-      this._model = buildModel(this._hass.states, this._hass.entities);
+      this._model = buildModel(this._hass.states, this._hass.entities, Date.now(), this._config);
       this._render();
     }
 
@@ -340,7 +430,14 @@ function defineCard() {
       return {};
     }
 
+    static getConfigElement() {
+      return document.createElement(EDITOR_TYPE);
+    }
+
     setConfig(config) {
+      if (config?.devices !== undefined && !Array.isArray(config.devices)) {
+        throw new Error("devices must be a list of device IDs");
+      }
       this._config = { ...(config ?? {}) };
       this._seen = null;
       this._update();
@@ -411,7 +508,7 @@ function defineCard() {
         return;
       }
       this._seen = seen;
-      this._model = buildModel(this._hass.states, this._hass.entities);
+      this._model = buildModel(this._hass.states, this._hass.entities, Date.now(), this._config);
       this._render();
     }
 
@@ -447,8 +544,74 @@ function defineCard() {
     }
   }
 
+  class ElektroCeljeCardEditor extends HTMLElement {
+    setConfig(config) {
+      this._config = { ...(config ?? {}) };
+      this._render();
+    }
+
+    set hass(hass) {
+      this._hass = hass;
+      this._render();
+    }
+
+    _render() {
+      if (!this._hass || !this._config) return;
+      if (!this._form) {
+        this._form = document.createElement("ha-form");
+        this._form.schema = [
+          {
+            name: "devices",
+            selector: { device: { integration: PLATFORM, multiple: true } },
+          },
+          { name: "title", selector: { text: {} } },
+          {
+            name: "days_ahead",
+            selector: { number: { min: 0, max: 30, mode: "box" } },
+          },
+          { name: "show_empty", selector: { boolean: {} } },
+          { name: "show_ended", selector: { boolean: {} } },
+        ];
+        this._form.addEventListener("value-changed", (ev) => {
+          const config = { ...this._config, ...ev.detail.value };
+          // Keep the YAML short: drop empty values and the defaults.
+          for (const key of Object.keys(config)) {
+            const value = config[key];
+            if (
+              value === undefined ||
+              value === null ||
+              value === "" ||
+              (Array.isArray(value) && value.length === 0)
+            ) {
+              delete config[key];
+            }
+          }
+          if (config.show_empty === false) delete config.show_empty;
+          if (config.show_ended === true) delete config.show_ended;
+          this._config = config;
+          this.dispatchEvent(
+            new CustomEvent("config-changed", {
+              detail: { config },
+              bubbles: true,
+              composed: true,
+            }),
+          );
+        });
+        this.appendChild(this._form);
+      }
+      const t = editorTexts(this._hass.locale?.language || this._hass.language);
+      this._form.computeLabel = (s) => t[s.name] || s.name;
+      this._form.computeHelper = (s) => t[`${s.name}Help`] || "";
+      this._form.hass = this._hass;
+      this._form.data = { show_empty: false, show_ended: true, ...this._config };
+    }
+  }
+
   if (!customElements.get(CARD_TYPE)) {
     customElements.define(CARD_TYPE, ElektroCeljeCard);
+  }
+  if (!customElements.get(EDITOR_TYPE)) {
+    customElements.define(EDITOR_TYPE, ElektroCeljeCardEditor);
   }
   window.customCards = window.customCards || [];
   if (!window.customCards.some((c) => c.type === CARD_TYPE)) {
@@ -458,7 +621,7 @@ function defineCard() {
       description:
         "Planned power outages of your Elektro Celje locations. " +
         "The card hides itself when nothing is planned.",
-      preview: false,
+      preview: true,
     });
   }
 }
