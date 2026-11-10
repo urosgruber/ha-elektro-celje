@@ -946,3 +946,69 @@ async def test_reminder_inside_quiet_hours_is_sent_at_once(
     assert titles == ["Planned power outage", "Power outage tomorrow"]
     assert coordinator._held == {}
     await _unload(hass, entry)
+
+
+async def test_restart_after_quiet_end_flushes_once(
+    hass, aioclient_mock, phones, freezer, ljubljana, hass_storage
+) -> None:
+    """Held at 23:00, HA down at 07:00, back at 07:30: send once, not again."""
+    freezer.move_to(_local(8, 23, 0))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry(ON_PIXEL)
+    await _setup(hass, entry)
+    await _unload(hass, entry)
+    assert phones["mobile_app_pixel"] == []
+
+    freezer.move_to(_local(9, 7, 30))
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(phones["mobile_app_pixel"]) == 1
+    assert hass_storage[f"{DOMAIN}.{entry.entry_id}"]["data"]["held"] == {}
+    await _unload(hass, entry)
+
+    # Another restart sends nothing again.
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(phones["mobile_app_pixel"]) == 1
+    await _unload(hass, entry)
+
+
+async def test_route_held_changed_then_removed_holds_removed(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    freezer.move_to(_local(8, 23, 0))
+    aioclient_mock.get(VELENJE, text=EMPTY_FEED)
+    entry = _entry(ON_PIXEL)
+    coordinator = await _setup(hass, entry)
+    now = dt_util.utcnow()
+    old = _record("9:0", _local(10, 9))
+    new = _record("9:0", _local(11, 10))
+    changed = AlertEvent("changed", new, old.start, old.end)
+    assert coordinator._route([changed], now) == []
+    assert coordinator._held["9:0"]["kind"] == "changed"
+    assert coordinator._route([AlertEvent("removed", new)], now) == []
+    assert coordinator._held["9:0"]["kind"] == "removed"
+    await _move(hass, freezer, _local(9, 7, 0))
+    assert _sent(phones["mobile_app_pixel"])[0][0] == "Power outage no longer listed"
+    assert len(phones["mobile_app_pixel"]) == 1
+    await _unload(hass, entry)
+
+
+async def test_options_form_keeps_stale_phone_visible(hass, phones) -> None:
+    """A stored phone that no longer exists shows in the list and can go."""
+    entry = _entry({CONF_NOTIFY_TARGETS: ["mobile_app_old", "mobile_app_pixel"]})
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    key, selector = _field(result, CONF_NOTIFY_TARGETS)
+    values = {o["value"]: o["label"] for o in selector.config["options"]}
+    assert values["mobile_app_old"] == "mobile_app_old"
+    assert key.description["suggested_value"] == [
+        "mobile_app_old",
+        "mobile_app_pixel",
+    ]
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {CONF_NOTIFY_TARGETS: ["mobile_app_pixel"], SECTION_ADVANCED: {}},
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_NOTIFY_TARGETS] == ["mobile_app_pixel"]
