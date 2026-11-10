@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from . import ElektroCeljeConfigEntry
 from .entity import outage_dict
 
-TO_REDACT = {"name", "title", "station"}
+TO_REDACT = {"name", "title", "station", "notify_targets", "quiet_entity"}
 
 
 def _summary(item: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
