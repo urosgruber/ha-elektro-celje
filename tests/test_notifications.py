@@ -488,6 +488,52 @@ async def test_switch_restores_off_before_first_refresh(
     await _unload(hass, entry)
 
 
+class _NewRestoreData:
+    """The restore API of newer HA versions: no ``last_states`` attribute."""
+
+    def __init__(self, states: dict[str, State]) -> None:
+        self._states = states
+
+    def async_get_stored_state(self, entity_id: str):
+        state = self._states.get(entity_id)
+        return None if state is None else type("Stored", (), {"state": state})()
+
+
+class _BrokenRestoreData:
+    """A restore API that the integration does not know."""
+
+
+@pytest.mark.parametrize("api", ["new", "broken"])
+async def test_switch_restore_with_other_ha_api(
+    hass, aioclient_mock, phones, freezer, monkeypatch, api
+) -> None:
+    """Setup works with the newer restore API and with an unknown one."""
+    from custom_components.elektro_celje import location
+
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry(ON_PIXEL)
+    entry.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create(
+        "switch",
+        DOMAIN,
+        switch_unique_id(entry.entry_id, "detected"),
+        suggested_object_id="home_notify_new_outage",
+        config_entry=entry,
+    )
+    fake = (
+        _NewRestoreData({SWITCHES["detected"]: State(SWITCHES["detected"], "off")})
+        if api == "new"
+        else _BrokenRestoreData()
+    )
+    monkeypatch.setattr(location.restore_state, "async_get", lambda _hass: fake)
+    await _setup(hass, entry)
+    assert entry.state is ConfigEntryState.LOADED
+    # The new API restores "off", so no alert. The unknown API keeps "on".
+    assert len(phones["mobile_app_pixel"]) == (0 if api == "new" else 1)
+    await _unload(hass, entry)
+
+
 # --- Sending ----------------------------------------------------------------
 
 

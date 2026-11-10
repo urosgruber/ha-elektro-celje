@@ -83,6 +83,19 @@ def reminder_time(entry: ConfigEntry) -> time:
         return DEFAULT_REMINDER_TIME
 
 
+def _stored_state(hass: HomeAssistant, entity_id: str) -> Any:
+    """Return the state stored before the restart, or None.
+
+    Newer HA versions replaced ``last_states`` with ``async_get_stored_state``.
+    Support both, so the integration works on older and newer versions.
+    """
+    data = restore_state.async_get(hass)
+    getter = getattr(data, "async_get_stored_state", None)
+    if getter is not None:
+        return getter(entity_id)
+    return data.last_states.get(entity_id)
+
+
 @dataclass
 class LocationData:
     """The state of one location."""
@@ -207,12 +220,17 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         The first refresh must already respect a switch that the user turned off.
         """
         registry = er.async_get(self.hass)
-        last_states = restore_state.async_get(self.hass).last_states
         for kind in ALERT_KINDS:
             entity_id = registry.async_get_entity_id(
                 "switch", DOMAIN, switch_unique_id(self.config_entry.entry_id, kind)
             )
-            stored = last_states.get(entity_id) if entity_id else None
+            if not entity_id:
+                continue
+            try:
+                stored = _stored_state(self.hass, entity_id)
+            except Exception:  # noqa: BLE001 - internal HA API; never block setup
+                _LOGGER.debug("Cannot read the stored state of %s", entity_id)
+                continue
             if stored is not None:
                 self.notify_enabled[kind] = stored.state.state != "off"
 
