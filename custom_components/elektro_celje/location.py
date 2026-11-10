@@ -330,8 +330,10 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
                 self.hass, self.async_flush(), f"{self.name} flush"
             )
         elif not self.notify.quiet_entity and quiet.end is not None:
+            # Never a moment in the past: that would loop the timer.
+            when = max(quiet.end, now + timedelta(seconds=1))
             self._unsub_flush = async_track_point_in_utc_time(
-                self.hass, self._handle_flush_time, quiet.end
+                self.hass, self._handle_flush_time, when
             )
 
     @callback

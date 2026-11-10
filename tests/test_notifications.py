@@ -783,3 +783,49 @@ async def test_diagnostics_redact_phones_and_quiet_entity(
     assert diag["entry"]["options"][CONF_NOTIFY_TARGETS] == "**REDACTED**"
     assert diag["entry"]["options"][CONF_QUIET_ENTITY] == "**REDACTED**"
     await _unload(hass, entry)
+
+
+async def test_quiet_window_end_on_autumn_dst_day(hass, ljubljana) -> None:
+    """25 Oct 2026: 02:00-03:00 occurs twice. The end is after now."""
+    utc = dt_util.UTC
+    # 02:30 CET, the second pass (00:30 UTC was the first pass, CEST).
+    second_pass = datetime(2026, 10, 25, 1, 30, tzinfo=utc)
+    end = quiet_window_end(second_pass, time(1), time(2, 45))
+    assert end == datetime(2026, 10, 25, 1, 45, tzinfo=utc)  # 02:45 CET
+    assert end > second_pass
+    # 02:30 CEST, the first pass: the first 02:45 is the end.
+    first_pass = datetime(2026, 10, 25, 0, 30, tzinfo=utc)
+    assert quiet_window_end(first_pass, time(1), time(2, 45)) == datetime(
+        2026, 10, 25, 0, 45, tzinfo=utc
+    )
+
+
+async def test_quiet_window_end_on_spring_dst_day(hass, ljubljana) -> None:
+    """29 Mar 2026: 02:00-03:00 does not exist. The end is still after now."""
+    utc = dt_util.UTC
+    now = datetime(2026, 3, 29, 0, 45, tzinfo=utc)  # 01:45 CET
+    end = quiet_window_end(now, time(1), time(2, 30))
+    assert end is not None
+    assert end > now
+    assert end <= datetime(2026, 3, 29, 1, 30, tzinfo=utc)  # 03:30 CEST
+
+
+async def test_flush_timer_on_autumn_dst_day_does_not_loop(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    """A held alert at 02:30 CET (second pass) waits for 02:45 CET."""
+    freezer.move_to(datetime(2026, 10, 25, 1, 30, tzinfo=dt_util.UTC))
+    aioclient_mock.get(VELENJE, text=EMPTY_FEED)
+    entry = _entry({**ON_PIXEL, CONF_QUIET_FROM: "01:00:00", CONF_QUIET_TO: "02:45"})
+    coordinator = await _setup(hass, entry)
+    coordinator._held["9:0"] = make_item(
+        "detected",
+        {"key": "9:0", "start": "2026-10-26T09:00:00+01:00", "location": "Home"},
+    )
+    coordinator._arm_flush(dt_util.utcnow())
+    await hass.async_block_till_done()
+    assert phones["mobile_app_pixel"] == []
+    assert coordinator._held
+    await _move(hass, freezer, datetime(2026, 10, 25, 1, 45, tzinfo=dt_util.UTC))
+    assert len(phones["mobile_app_pixel"]) == 1
+    await _unload(hass, entry)

@@ -11,7 +11,7 @@ import logging
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -200,18 +200,32 @@ def quiet_window_end(now: datetime, start: time, end: time) -> datetime | None:
     if start == end:
         return None
     local = dt_util.as_local(now)
-    tz = local.tzinfo
     today = local.date()
     clock = local.time().replace(tzinfo=None)
     if start < end:
         if start <= clock < end:
-            return datetime.combine(today, end, tzinfo=tz)
+            return _local_end(today, end, now)
         return None
     if clock >= start:
-        return datetime.combine(today + timedelta(days=1), end, tzinfo=tz)
+        return _local_end(today + timedelta(days=1), end, now)
     if clock < end:
-        return datetime.combine(today, end, tzinfo=tz)
+        return _local_end(today, end, now)
     return None
+
+
+def _local_end(day: date, end: time, now: datetime) -> datetime:
+    """Return `end` on `day` as a UTC moment after `now` when one exists.
+
+    On the autumn DST day, a local time can occur twice. datetime.combine
+    picks the first one (fold=0). If that is not after `now`, the second one
+    (fold=1) is the end of the current quiet period.
+    """
+    tz = dt_util.get_default_time_zone()
+    moment = dt_util.as_utc(datetime.combine(day, end, tzinfo=tz))
+    if moment <= dt_util.as_utc(now):
+        later = datetime.combine(day, end, tzinfo=tz).replace(fold=1)
+        moment = dt_util.as_utc(later)
+    return moment
 
 
 @dataclass(frozen=True)
