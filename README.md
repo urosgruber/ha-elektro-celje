@@ -111,7 +111,11 @@ the location. The events still fire.
 The options have a collapsed section **Advanced**. There you can choose a
 quiet hours entity: a Schedule helper, a Toggle helper (`input_boolean`) or a
 binary sensor. The entity replaces the times. The notifications wait while
-its state is `on`. They arrive when its state changes from `on`.
+its state is `on`. They arrive when its state changes from `on` to a real
+state, such as `off`. While the entity is missing, `unknown` or
+`unavailable`, for example during a restart, the notifications keep waiting.
+If the entity is still in that state 10 minutes after Home Assistant starts,
+the integration treats it as not quiet and sends the notifications.
 
 A Schedule helper is the easiest choice. It can have other quiet hours on
 each day of the week. It also tells the integration when the quiet hours end,

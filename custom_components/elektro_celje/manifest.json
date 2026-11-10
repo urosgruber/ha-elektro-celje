@@ -1,6 +1,7 @@
 {
   "domain": "elektro_celje",
   "name": "Elektro Celje Obvestila o izklopih",
+  "after_dependencies": ["input_boolean", "schedule"],
   "codeowners": ["@urosgruber"],
   "config_flow": true,
   "dependencies": ["frontend", "http"],

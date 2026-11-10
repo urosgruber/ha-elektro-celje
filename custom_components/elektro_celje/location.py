@@ -9,11 +9,13 @@ from datetime import datetime, time, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import restore_state
 from homeassistant.helpers.event import (
     EventStateChangedData,
+    async_call_later,
     async_track_point_in_utc_time,
     async_track_state_change_event,
 )
@@ -34,7 +36,9 @@ from .const import (
 from .coordinator import RegionCoordinator
 from .models import Outage
 from .notifications import (
+    UNKNOWN_STATES,
     NotifySettings,
+    QuietState,
     async_send,
     has_ended,
     make_item,
@@ -48,6 +52,9 @@ from .outages import build_outages, is_planned, next_boundary
 _LOGGER = logging.getLogger(__name__)
 
 STORAGE_VERSION = 1
+# A quiet entity that is still missing, unknown or unavailable this long after
+# the start of Home Assistant counts as "not quiet", so the queue cannot stick.
+QUIET_ENTITY_GRACE = timedelta(minutes=10)
 
 
 def _store(hass: HomeAssistant, entry_id: str) -> Store[dict[str, Any]]:
@@ -149,6 +156,8 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         self._held: dict[str, dict[str, Any]] = {}
         self._unsub_flush: CALLBACK_TYPE | None = None
         self._unsub_quiet_entity: CALLBACK_TYPE | None = None
+        self._unsub_grace: CALLBACK_TYPE | None = None
+        self._entity_grace = True
         self._lock = asyncio.Lock()
         self._closed = False
         self._unsub_timer: CALLBACK_TYPE | None = None
@@ -175,6 +184,12 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
             self._unsub_quiet_entity = async_track_state_change_event(
                 self.hass, [self.notify.quiet_entity], self._handle_quiet_entity
             )
+            if self.hass.is_running:
+                self._start_grace()
+            else:
+                self._unsub_grace = self.hass.bus.async_listen_once(
+                    EVENT_HOMEASSISTANT_STARTED, self._handle_started
+                )
         self._unsub_regions = [
             region.async_add_listener(self._handle_region_update)
             for region in self.regions
@@ -195,6 +210,28 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
             stored = last_states.get(entity_id) if entity_id else None
             if stored is not None:
                 self.notify_enabled[kind] = stored.state.state != "off"
+
+    @callback
+    def _handle_started(self, _event: Event) -> None:
+        self._unsub_grace = None
+        self._start_grace()
+
+    @callback
+    def _start_grace(self) -> None:
+        self._unsub_grace = async_call_later(
+            self.hass, QUIET_ENTITY_GRACE, self._handle_grace_over
+        )
+
+    @callback
+    def _handle_grace_over(self, _now: datetime) -> None:
+        self._unsub_grace = None
+        self._entity_grace = False
+        self.config_entry.async_create_task(
+            self.hass, self.async_flush(), f"{self.name} flush"
+        )
+
+    def _quiet(self, now: datetime) -> QuietState:
+        return quiet_state(self.hass, self.notify, now, self._entity_grace)
 
     @callback
     def _handle_region_update(self) -> None:
@@ -276,7 +313,7 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         """
         if not self.notify.targets:
             return []
-        quiet = quiet_state(self.hass, self.notify, now)
+        quiet = self._quiet(now)
         location = self.config_entry.title
         entry_id = self.config_entry.entry_id
         to_send: list[dict[str, Any]] = []
@@ -324,7 +361,7 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
             self._unsub_flush = None
         if not self._held or self._closed or self._shutdown_requested:
             return
-        quiet = quiet_state(self.hass, self.notify, now)
+        quiet = self._quiet(now)
         if not quiet.quiet:
             self.config_entry.async_create_task(
                 self.hass, self.async_flush(), f"{self.name} flush"
@@ -345,8 +382,12 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
 
     @callback
     def _handle_quiet_entity(self, event: Event[EventStateChangedData]) -> None:
+        """Flush on a real state that is not "on".
+
+        A missing, unknown or unavailable state keeps holding (see `_quiet`).
+        """
         new_state = event.data["new_state"]
-        if new_state is not None and new_state.state == "on":
+        if new_state is None or new_state.state in ("on", *UNKNOWN_STATES):
             return
         self.config_entry.async_create_task(
             self.hass, self.async_flush(), f"{self.name} flush"
@@ -361,7 +402,7 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
             if self._closed or not self._held:
                 return
             now = dt_util.utcnow()
-            if quiet_state(self.hass, self.notify, now).quiet:
+            if self._quiet(now).quiet:
                 self._arm_flush(now)
                 return
             items = [i for i in self._held.values() if not has_ended(i, now)]
@@ -432,6 +473,9 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         if self._unsub_quiet_entity is not None:
             self._unsub_quiet_entity()
             self._unsub_quiet_entity = None
+        if self._unsub_grace is not None:
+            self._unsub_grace()
+            self._unsub_grace = None
         for unsub in self._unsub_regions:
             unsub()
         self._unsub_regions = []

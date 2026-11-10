@@ -829,3 +829,60 @@ async def test_flush_timer_on_autumn_dst_day_does_not_loop(
     await _move(hass, freezer, datetime(2026, 10, 25, 1, 45, tzinfo=dt_util.UTC))
     assert len(phones["mobile_app_pixel"]) == 1
     await _unload(hass, entry)
+
+
+async def test_quiet_entity_missing_at_setup_holds(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    """A quiet entity that does not exist yet keeps the alert waiting."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry({**ON_PIXEL, CONF_QUIET_ENTITY: "schedule.night"})
+    coordinator = await _setup(hass, entry)
+    assert list(coordinator._held) == ["43322:0"]
+    assert phones["mobile_app_pixel"] == []
+    # The entity appears with a real "off" state: flush.
+    hass.states.async_set("schedule.night", "off")
+    await hass.async_block_till_done()
+    assert len(phones["mobile_app_pixel"]) == 1
+    await _unload(hass, entry)
+
+
+async def test_quiet_entity_unavailable_blip_does_not_flush(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    hass.states.async_set("binary_sensor.night", "on")
+    entry = _entry({**ON_PIXEL, CONF_QUIET_ENTITY: "binary_sensor.night"})
+    coordinator = await _setup(hass, entry)
+    for state in ("unavailable", "unknown", "on"):
+        hass.states.async_set("binary_sensor.night", state)
+        await hass.async_block_till_done()
+    assert list(coordinator._held) == ["43322:0"]
+    assert phones["mobile_app_pixel"] == []
+    await _unload(hass, entry)
+
+
+async def test_quiet_entity_still_unknown_after_grace_flushes(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    """After 10 minutes, a missing entity counts as not quiet."""
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    entry = _entry({**ON_PIXEL, CONF_QUIET_ENTITY: "input_boolean.gone"})
+    await _setup(hass, entry)
+    await _move(hass, freezer, _local(9, 7, 49))
+    assert phones["mobile_app_pixel"] == []
+    await _move(
+        hass,
+        freezer,
+        _local(
+            9,
+            7,
+            50,
+        )
+        + timedelta(seconds=1),
+    )
+    assert len(phones["mobile_app_pixel"]) == 1
+    await _unload(hass, entry)

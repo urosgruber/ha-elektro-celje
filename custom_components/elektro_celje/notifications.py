@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
@@ -236,19 +237,29 @@ class QuietState:
     end: datetime | None = None
 
 
+UNKNOWN_STATES = (STATE_UNKNOWN, STATE_UNAVAILABLE)
+
+
 def quiet_state(
-    hass: HomeAssistant, settings: NotifySettings, now: datetime
+    hass: HomeAssistant,
+    settings: NotifySettings,
+    now: datetime,
+    unknown_is_quiet: bool = True,
 ) -> QuietState:
     """Return the quiet state now.
 
     With an entity, it is quiet while the entity state is "on". A schedule
     gives the end in its `next_event` attribute. Other entities give no end.
+    A missing, unknown or unavailable entity counts as quiet while
+    `unknown_is_quiet` is True, so a restart does not flush the queue.
     """
     if not settings.quiet_hours:
         return QuietState(False)
     if settings.quiet_entity:
         state = hass.states.get(settings.quiet_entity)
-        if state is None or state.state != "on":
+        if state is None or state.state in UNKNOWN_STATES:
+            return QuietState(unknown_is_quiet)
+        if state.state != "on":
             return QuietState(False)
         end = state.attributes.get("next_event")
         if isinstance(end, str):
