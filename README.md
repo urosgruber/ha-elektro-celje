@@ -283,9 +283,29 @@ You can also find the card in the card picker. Its name is
 not add a dashboard resource. After you install or update the integration,
 restart Home Assistant. Then hard-reload the browser, so it loads the new card.
 
-The card has one option. `title` adds a heading to the card.
+Set the options in the visual editor of the card, or in YAML. Every option
+has a default. With no options, the card shows all locations and hides itself
+when nothing is planned.
 
-The card shows all outages of all locations.
+| Option | Default | What it does |
+|---|---|---|
+| `devices` | all locations | A list of the location devices to show. |
+| `title` | no title | A heading for the card. |
+| `days_ahead` | all days | Shows the outages from today up to this many days after today. `0` shows today only. An outage that happens now always shows. |
+| `show_empty` | `false` | Shows "No planned outages" and the time of the last check, instead of hiding the card. |
+| `show_ended` | `true` | Shows the **Ended today** section. |
+
+```yaml
+type: custom:elektro-celje-card
+title: Home
+devices:
+  - 1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d
+days_ahead: 7
+show_empty: true
+```
+
+A feed problem always shows. No option hides it, because a hidden feed
+problem can hide an outage.
 The integration builds all texts of the card. The card only draws them. The texts are in Slovenian when the
 language of Home Assistant is Slovenian. Otherwise they are in English.
 
@@ -429,6 +449,8 @@ Pull requests are welcome. Run `ruff check .`, `ruff format --check .` and
 
 ## Changelog
 
+- 2.4.0: card options in a visual editor: locations, title, days ahead,
+  show when nothing is planned, and show the outages that ended today.
 - 2.3.0: built-in phone notifications for each location, with quiet hours,
   four switches and an optional quiet hours entity. The blueprint stays as an
   advanced option.
