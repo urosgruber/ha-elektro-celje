@@ -5,48 +5,133 @@ blueprint:
     removes a power outage. Sends a reminder on the day before an outage.
     A change replaces the earlier notification of the same outage, because it
     uses the same tag. Two outages of one notice get two notifications.
+    The texts are in Slovenian or English. You can write your own texts.
   domain: automation
   author: urosgruber
   source_url: https://github.com/urosgruber/ha-elektro-celje/blob/master/blueprints/automation/elektro_celje/outage_notify.yaml
+  homeassistant:
+    min_version: "2024.10.0"
   input:
-    notify_device:
-      name: Device to notify
-      description: The phone that receives the notification.
-      selector:
-        device:
-          integration: mobile_app
-    on_detected:
-      name: New outage
-      description: Notify when a new outage is found.
-      default: true
-      selector:
-        boolean:
-    on_reminder:
-      name: Reminder on the day before
-      description: Notify on the day before an outage.
-      default: true
-      selector:
-        boolean:
-    on_changed:
-      name: Changed outage
-      description: Notify when the time of an outage changes.
-      default: true
-      selector:
-        boolean:
-    on_removed:
-      name: Removed outage
-      description: Notify when an outage is no longer listed.
-      default: true
-      selector:
-        boolean:
-    locations:
+    phone:
+      name: Phone
+      icon: mdi:cellphone
+      input:
+        notify_device:
+          name: Device to notify
+          description: The phone that receives the notification.
+          selector:
+            device:
+              integration: mobile_app
+    alerts:
+      name: Alerts
+      icon: mdi:bell-ring
+      input:
+        on_detected:
+          name: New outage
+          description: Notify when a new outage is found.
+          default: true
+          selector:
+            boolean:
+        on_reminder:
+          name: Reminder on the day before
+          description: Notify on the day before an outage.
+          default: true
+          selector:
+            boolean:
+        on_changed:
+          name: Changed outage
+          description: Notify when the time of an outage changes.
+          default: true
+          selector:
+            boolean:
+        on_removed:
+          name: Removed outage
+          description: Notify when an outage is no longer listed.
+          default: true
+          selector:
+            boolean:
+    places:
       name: Locations
-      description: >
-        Location names, separated by commas. Leave empty to notify for all
-        locations.
-      default: ""
-      selector:
-        text:
+      icon: mdi:map-marker
+      input:
+        location_entities:
+          name: Locations (pick)
+          description: >
+            Pick any entity of each location you want. Leave this and the
+            location names empty to notify for all locations. If you fill
+            both, an outage of any listed location sends a notification.
+          default: []
+          selector:
+            entity:
+              filter:
+                - integration: elektro_celje
+              multiple: true
+        locations:
+          name: Locations (names)
+          description: >
+            Location names, separated by commas. Leave empty to notify for all
+            locations.
+          default: ""
+          selector:
+            text:
+    texts:
+      name: Texts
+      icon: mdi:text
+      collapsed: true
+      input:
+        language:
+          name: Language
+          description: The language of the built-in texts.
+          default: sl
+          selector:
+            select:
+              options:
+                - value: sl
+                  label: Slovenščina
+                - value: en
+                  label: English
+        title_detected:
+          name: Title of a new outage
+          description: Leave empty for the built-in title. You can use the placeholders of "Message".
+          default: ""
+          selector:
+            text:
+        title_reminder:
+          name: Title of the reminder
+          description: Leave empty for the built-in title. You can use the placeholders of "Message".
+          default: ""
+          selector:
+            text:
+        title_changed:
+          name: Title of a changed outage
+          description: Leave empty for the built-in title. You can use the placeholders of "Message".
+          default: ""
+          selector:
+            text:
+        title_removed:
+          name: Title of a removed outage
+          description: Leave empty for the built-in title. You can use the placeholders of "Message".
+          default: ""
+          selector:
+            text:
+        message_format:
+          name: Message
+          description: >
+            Leave empty for the built-in message. Otherwise write your own
+            text with these placeholders:
+            {location} the location name,
+            {when} the date and time of the outage,
+            {old_when} the earlier date and time (empty unless the outage
+            changed),
+            {duration} the length, for example "2 h 30 min" (empty if unknown),
+            {station} the transformer station,
+            {text} the text of the notice,
+            {link} the link to the notice.
+            Example: {location}: {when} ({duration}), {station}
+          default: ""
+          selector:
+            text:
+              multiline: true
 
 mode: queued
 max_exceeded: silent
@@ -58,6 +143,14 @@ variables:
     elektro_celje_outage_changed: !input on_changed
     elektro_celje_outage_removed: !input on_removed
   location_filter: !input locations
+  location_entities: !input location_entities
+  lang: !input language
+  custom_titles:
+    elektro_celje_outage_detected: !input title_detected
+    elektro_celje_outage_reminder: !input title_reminder
+    elektro_celje_outage_changed: !input title_changed
+    elektro_celje_outage_removed: !input title_removed
+  message_format: !input message_format
 
 triggers:
   - trigger: event
@@ -74,38 +167,59 @@ conditions:
     value_template: "{{ notify_flags[trigger.event.event_type] }}"
   - condition: template
     value_template: >
-      {% set wanted = location_filter.split(',') | map('trim') | map('lower')
-         | reject('eq', '') | list %}
-      {{ not wanted or trigger.event.data.location | lower in wanted }}
+      {% set picked = [location_entities] if location_entities is string
+         else (location_entities or []) %}
+      {% set entries = picked | map('config_entry_id') | reject('none') | list %}
+      {% set wanted = ((location_filter or '') | string).split(',')
+         | map('trim') | map('lower') | reject('eq', '') | list %}
+      {{ (not picked and not wanted)
+         or trigger.event.data.entry_id in entries
+         or trigger.event.data.location | lower in wanted }}
 
 actions:
   - variables:
       d: "{{ trigger.event.data }}"
-      titles:
-        elektro_celje_outage_detected: Načrtovan izklop
-        elektro_celje_outage_reminder: Jutri izklop
-        elektro_celje_outage_changed: Izklop spremenjen
-        elektro_celje_outage_removed: Izklop ni več objavljen
+      builtin_titles:
+        sl:
+          elektro_celje_outage_detected: Načrtovan izklop
+          elektro_celje_outage_reminder: Jutri izklop
+          elektro_celje_outage_changed: Izklop spremenjen
+          elektro_celje_outage_removed: Izklop ni več objavljen
+        en:
+          elektro_celje_outage_detected: Planned power outage
+          elektro_celje_outage_reminder: Power outage tomorrow
+          elektro_celje_outage_changed: Power outage changed
+          elektro_celje_outage_removed: Power outage no longer listed
       when: >
+        {% set en = lang == 'en' %}
+        {% set months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+           'Sep', 'Oct', 'Nov', 'Dec'] %}
         {% if d.start is none %}
-          čas ni znan
+          {{ 'time unknown' if en else 'čas ni znan' }}
         {% else %}
           {% set s = as_local(as_datetime(d.start)) %}
           {% set e = as_local(as_datetime(d.end)) if d.end else none %}
-          {{ s.strftime('%-d. %-m. %Y') }},
-          {{ 'ves dan' if d.all_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
+          {% set day = (s.day ~ ' ' ~ months[s.month - 1] ~ ' ' ~ s.year) if en
+             else s.strftime('%-d. %-m. %Y') %}
+          {{ day }},
+          {{ ('all day' if en else 'ves dan') if d.all_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
         {% endif %}
       old_when: >
+        {% set en = lang == 'en' %}
+        {% set months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug',
+           'Sep', 'Oct', 'Nov', 'Dec'] %}
         {% if d.old_start is not defined %}
         {% elif d.old_start is none %}
-          čas ni znan
+          {{ 'time unknown' if en else 'čas ni znan' }}
         {% else %}
           {% set s = as_local(as_datetime(d.old_start)) %}
           {% set e = as_local(as_datetime(d.old_end)) if d.old_end else none %}
           {% set whole_day = e is not none and s.strftime('%H:%M') == '00:00'
              and (e - s).total_seconds() >= 82800 %}
-          {{ s.strftime('%-d. %-m. %Y') }},
-          {{ 'ves dan' if whole_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
+          {% set day = (s.day ~ ' ' ~ months[s.month - 1] ~ ' ' ~ s.year) if en
+             else s.strftime('%-d. %-m. %Y') %}
+          {{ day }},
+          {{ ('all day' if en else 'ves dan') if whole_day else s.strftime('%H:%M') ~ ('–' ~ e.strftime('%H:%M') if e else '') }}
         {% endif %}
       duration: >
         {% if d.duration_minutes is not none %}
@@ -114,19 +228,47 @@ actions:
           {% set r = m % 60 %}
           {{ [(h ~ ' h') if h else '', (r ~ ' min') if r else ''] | select | join(' ') }}
         {% endif %}
-      message: >
+      builtin_message: >
+        {% set en = lang == 'en' %}
         {% set m %}
           {{ d.location }}:
-          {%- if old_when | trim %} prej {{ old_when | trim }}, zdaj{% endif %}
+          {%- if old_when | trim %} {{ 'previously' if en else 'prej' }} {{ old_when | trim }}, {{ 'now' if en else 'zdaj' }}{% endif %}
           {{ when | trim }}
           {%- if duration | trim %} ({{ duration | trim }}){% endif %}
           {%- if d.start is none and d.text %}. {{ d.text }}{% endif %}
         {% endset %}
         {{ m | regex_replace('\\s+', ' ') | trim }}
+      # The title and the message in one text, separated by a new line.
+      # Each placeholder of a custom text becomes a marker first. Then each
+      # marker becomes its value. So a value that contains "{location}" stays
+      # as it is. The values are never rendered as a template.
+      texts: >
+        {% set title_format = (custom_titles[trigger.event.event_type] or '') | string | trim %}
+        {% set message_format_text = (message_format or '') | string | trim %}
+        {% set names = ['{location}', '{when}', '{old_when}', '{duration}',
+           '{station}', '{text}', '{link}'] %}
+        {% set values = [d.location, when | trim, old_when | trim, duration | trim,
+           d.station, d.text, d.link] %}
+        {% macro fill(format) %}
+          {%- set ns = namespace(out=format) -%}
+          {%- for name in names -%}
+            {%- set ns.out = ns.out | replace(name, '\x01' ~ loop.index0 ~ '\x01') -%}
+          {%- endfor -%}
+          {%- for value in values -%}
+            {%- set clean = (value if value is not none and value is defined else '') | string | replace('\x01', '') -%}
+            {%- set ns.out = ns.out | replace('\x01' ~ loop.index0 ~ '\x01', clean) -%}
+          {%- endfor -%}
+          {{- ns.out -}}
+        {% endmacro %}
+        {% set custom_title = fill(title_format) | regex_replace('\\s+', ' ') | trim if title_format else '' %}
+        {% set custom_message = fill(message_format_text) | regex_replace('\\s+', ' ') | trim if message_format_text else '' %}
+        {{ (custom_title or builtin_titles['en' if lang == 'en' else 'sl'][trigger.event.event_type]) ~ '\n' ~ (custom_message or builtin_message | trim) }}
+      title: "{{ (texts | trim).split('\\n')[0] | trim }}"
+      message: "{{ (texts | trim).split('\\n')[-1] | trim }}"
   - domain: mobile_app
     type: notify
     device_id: !input notify_device
-    title: "{{ titles[trigger.event.event_type] }}"
-    message: "{{ message | trim }}"
+    title: "{{ title }}"
+    message: "{{ message }}"
     data:
       tag: "elektro_celje_{{ trigger.event.data.entry_id }}_{{ trigger.event.data.key }}"
