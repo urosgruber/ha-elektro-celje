@@ -135,16 +135,16 @@
     },
     "switch": {
       "notify_detected": {
-        "name": "New outage"
+        "name": "Notify: new outage"
       },
       "notify_reminder": {
-        "name": "Reminder"
+        "name": "Notify: reminder"
       },
       "notify_changed": {
-        "name": "Changed outage"
+        "name": "Notify: changed outage"
       },
       "notify_removed": {
-        "name": "Removed outage"
+        "name": "Notify: removed outage"
       }
     }
   },

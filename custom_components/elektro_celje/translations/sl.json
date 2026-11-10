@@ -135,16 +135,16 @@
     },
     "switch": {
       "notify_detected": {
-        "name": "Nov izklop"
+        "name": "Obvesti: nov izklop"
       },
       "notify_reminder": {
-        "name": "Opomnik"
+        "name": "Obvesti: opomnik"
       },
       "notify_changed": {
-        "name": "Spremenjen izklop"
+        "name": "Obvesti: spremenjen izklop"
       },
       "notify_removed": {
-        "name": "Odstranjen izklop"
+        "name": "Obvesti: odstranjen izklop"
       }
     }
   },

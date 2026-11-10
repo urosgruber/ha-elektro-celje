@@ -418,10 +418,10 @@ async def test_options_store_phones_and_quiet_entity(hass, phones) -> None:
 # --- Switches ---------------------------------------------------------------
 
 SWITCHES = {
-    "detected": "switch.home_new_outage",
-    "reminder": "switch.home_reminder",
-    "changed": "switch.home_changed_outage",
-    "removed": "switch.home_removed_outage",
+    "detected": "switch.home_notify_new_outage",
+    "reminder": "switch.home_notify_reminder",
+    "changed": "switch.home_notify_changed_outage",
+    "removed": "switch.home_notify_removed_outage",
 }
 
 
@@ -476,7 +476,7 @@ async def test_switch_restores_off_before_first_refresh(
         "switch",
         DOMAIN,
         switch_unique_id(entry.entry_id, "detected"),
-        suggested_object_id="home_new_outage",
+        suggested_object_id="home_notify_new_outage",
         config_entry=entry,
     )
     mock_restore_cache(hass, [State(SWITCHES["detected"], "off")])

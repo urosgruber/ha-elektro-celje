@@ -102,8 +102,8 @@ once.
 ### Switches
 
 Each location has four switches in the **Configuration** group of its device:
-**New outage**, **Reminder**, **Changed outage** and **Removed outage**. All
-are on by default. A switch that is off stops that kind of notification for
+**Notify: new outage**, **Notify: reminder**, **Notify: changed outage** and
+**Notify: removed outage**. All are on by default. A switch that is off stops that kind of notification for
 the location. The events still fire.
 
 ### Advanced: a quiet hours entity
@@ -116,7 +116,9 @@ its state is `on`. They arrive when its state changes from `on`.
 A Schedule helper is the easiest choice. It can have other quiet hours on
 each day of the week. It also tells the integration when the quiet hours end,
 so an outage that starts before then arrives at once. A Toggle helper or a
-binary sensor does not tell the end, so its notifications always wait.
+binary sensor does not tell the end. With such an entity, the notifications
+wait until its state changes from `on`, even if the outage has already
+started. Use a Schedule helper to avoid this.
 
 The **Quiet hours** option must be on, also for the entity.
 
@@ -136,7 +138,7 @@ device.
 | `binary_sensor.<location>_outage_planned` | On when at least one outage is planned. |
 | `binary_sensor.<location>_outage_now` | On while the power is off. |
 | `binary_sensor.<location>_feed_problem` | On when a feed cannot be read. The `problem_since` attribute holds the start of the problem. Diagnostic. |
-| `switch.<location>_new_outage`, `_reminder`, `_changed_outage`, `_removed_outage` | Turn one kind of notification on or off. Configuration. |
+| `switch.<location>_notify_new_outage`, `_notify_reminder`, `_notify_changed_outage`, `_notify_removed_outage` | Turn one kind of notification on or off. Configuration. |
 | `calendar.<location>_planned_outages` | The outages as calendar events. An outage that has ended stays in the calendar while the notice is in the feed. |
 
 Entity IDs follow the names in your language. Check them in
