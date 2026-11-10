@@ -907,3 +907,25 @@ async def test_each_failing_phone_logs_a_warning(
     assert "notify.mobile_app_a: mobile_app_a is gone" in caplog.text
     assert "notify.mobile_app_b: mobile_app_b is gone" in caplog.text
     await _unload(hass, entry)
+
+
+async def test_cleared_phones_stay_cleared_after_error(
+    hass, aioclient_mock, phones
+) -> None:
+    _mock_feeds(aioclient_mock)
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], {**USER_INPUT, CONF_STATION: "  "}
+    )
+    assert result["errors"] == {CONF_STATION: "station_required"}
+    key, _ = _field(result, CONF_NOTIFY_TARGETS)
+    assert key.description["suggested_value"] == []
+    # A kept choice also stays.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        {**USER_INPUT, CONF_STATION: " ", CONF_NOTIFY_TARGETS: ["mobile_app_pixel"]},
+    )
+    key, _ = _field(result, CONF_NOTIFY_TARGETS)
+    assert key.description["suggested_value"] == ["mobile_app_pixel"]

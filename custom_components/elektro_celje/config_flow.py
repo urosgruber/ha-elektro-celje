@@ -264,7 +264,11 @@ class ElektroCeljeConfigFlow(ConfigFlow, domain=DOMAIN):
                         )
                     }
                 return await self.async_step_confirm()
-            defaults = user_input
+            # A cleared phone list is not in user_input. It must stay cleared.
+            defaults = {
+                **user_input,
+                CONF_NOTIFY_TARGETS: list(user_input.get(CONF_NOTIFY_TARGETS, [])),
+            }
             suggestion_region = user_input.get(CONF_REGION, suggestion_region)
         stations = _station_options(await _async_notices(self.hass, suggestion_region))
         # Only a new location asks for phones. Reconfigure keeps the options.
