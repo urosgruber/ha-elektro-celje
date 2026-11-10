@@ -886,3 +886,24 @@ async def test_quiet_entity_still_unknown_after_grace_flushes(
     )
     assert len(phones["mobile_app_pixel"]) == 1
     await _unload(hass, entry)
+
+
+async def test_each_failing_phone_logs_a_warning(
+    hass, aioclient_mock, freezer, ljubljana, caplog
+) -> None:
+    freezer.move_to(_local(9, 7, 40))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    good = async_mock_service(hass, "notify", "mobile_app_good")
+
+    async def _fail(call: ServiceCall) -> None:
+        raise HomeAssistantError(f"{call.service} is gone")
+
+    for name in ("mobile_app_a", "mobile_app_b"):
+        hass.services.async_register("notify", name, _fail)
+    targets = ["mobile_app_a", "mobile_app_good", "mobile_app_b"]
+    entry = _entry({CONF_NOTIFY_TARGETS: targets})
+    await _setup(hass, entry)
+    assert len(good) == 1
+    assert "notify.mobile_app_a: mobile_app_a is gone" in caplog.text
+    assert "notify.mobile_app_b: mobile_app_b is gone" in caplog.text
+    await _unload(hass, entry)

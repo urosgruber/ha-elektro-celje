@@ -7,6 +7,7 @@ text here: nothing in this module renders a template.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Mapping
@@ -375,14 +376,20 @@ async def async_send(
         "message": message,
         "data": {"tag": tag(entry_id, str(payload.get("key")))},
     }
-    for target in targets:
-        try:
-            await hass.services.async_call(
-                NOTIFY_DOMAIN, target, dict(data), blocking=True
-            )
-        except Exception as err:  # noqa: BLE001 - one phone must not stop the others
+    # All phones at once. One slow or failing phone does not delay the others.
+    results = await asyncio.gather(
+        *(
+            hass.services.async_call(NOTIFY_DOMAIN, target, dict(data), blocking=True)
+            for target in targets
+        ),
+        return_exceptions=True,
+    )
+    for target, result in zip(targets, results, strict=True):
+        if isinstance(result, asyncio.CancelledError):
+            raise result
+        if isinstance(result, BaseException):
             _LOGGER.warning(
                 "Could not send the outage notification to notify.%s: %s",
                 target,
-                err,
+                result,
             )
