@@ -241,7 +241,7 @@ async def test_phone_labels_use_device_name(hass, phones) -> None:
     }
 
 
-async def test_add_form_default_is_all_phones(
+async def test_add_form_default_is_no_phones(
     hass, aioclient_mock, phones, freezer
 ) -> None:
     freezer.move_to(_local(9, 7, 40))
@@ -250,15 +250,14 @@ async def test_add_form_default_is_all_phones(
         DOMAIN, context={"source": SOURCE_USER}
     )
     key, selector = _field(result, CONF_NOTIFY_TARGETS)
-    assert key.description["suggested_value"] == [
-        "mobile_app_iphone",
-        "mobile_app_pixel",
-    ]
+    assert key.description["suggested_value"] == []
     assert selector.config["multiple"] is True
-    # The user keeps the default: both phones.
+    # Chips with an "Add" picker, not a list of checkboxes.
+    assert selector.config["mode"] == "dropdown"
+    # The user adds both phones.
     result = await hass.config_entries.flow.async_configure(
         result["flow_id"],
-        {**USER_INPUT, CONF_NOTIFY_TARGETS: key.description["suggested_value"]},
+        {**USER_INPUT, CONF_NOTIFY_TARGETS: ["mobile_app_iphone", "mobile_app_pixel"]},
     )
     assert result["step_id"] == "confirm"
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})

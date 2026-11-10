@@ -35,9 +35,9 @@ Set up each location in the UI.
 1. Open **Settings > Devices & services > Add integration**.
 2. Select **Elektro Celje Obvestila o izklopih**.
 3. Enter a name, the region and the station query for the location.
-   **Notify phones** lists the phones of the Home Assistant Companion app.
-   All phones are selected. Keep them, or clear the list for no
-   notifications.
+   In **Notify phones**, add the phones that get the notifications. The
+   picker lists the phones of the Home Assistant Companion app. With no
+   phones, the location sends no notifications.
 4. Check the planned outages for the station, and select **Submit**.
 
 Add the integration once for each location. A location is one station.
@@ -67,10 +67,10 @@ The integration sends the notifications itself. You need no automation and
 no blueprint. Each location sends to its own phones.
 
 - **Phones**: a phone is a `notify.mobile_app_*` action of the Companion app.
-  A new location selects all phones. A location without phones sends no
-  notification. A location that you added before 2.3.0 has no phones. To turn
-  its notifications on, open the options of the location and select the
-  phones.
+  A new location has no phones until you add them. A location without phones
+  sends no notification. A location that you added before 2.3.0 has no
+  phones. To turn its notifications on, open the options of the location and
+  add the phones.
 - **Alerts**: a new outage, a reminder on the day before, a changed outage and
   a removed outage. The texts are in Slovenian when the language of Home
   Assistant is Slovenian. Otherwise they are in English. The texts are the
