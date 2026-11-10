@@ -135,7 +135,45 @@ time and the new time.
 The link opens this URL in your Home Assistant:
 `https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https://raw.githubusercontent.com/urosgruber/ha-elektro-celje/master/blueprints/automation/elektro_celje/outage_notify.yaml`
 
-The notification texts are in Slovenian.
+The blueprint groups its inputs in four sections:
+
+- **Phone**: the device that receives the notification.
+- **Alerts**: four switches, one for each event. All are on by default.
+- **Locations**: **Locations (pick)** lets you pick any entity of each
+  location. **Locations (names)** takes location names, separated by commas.
+  If both are empty, you get alerts for all locations. If you fill both, an
+  outage of any listed location sends a notification.
+- **Texts** (collapsed): the language, one title for each event and the
+  message.
+
+The blueprint needs Home Assistant 2024.10.0 or newer. The old inputs keep
+their names and meaning. An automation that you made with an earlier version
+works unchanged and gives the same Slovenian texts.
+
+### Texts
+
+**Language** is `Slovenščina` (default) or `English`. English example:
+"Planned power outage" and "TP lopata: 12 Nov 2026, 08:00–14:00 (6 h)".
+
+Leave a title or the message empty to use the built-in text. To write your
+own, use these placeholders in the titles and in the message:
+
+| Placeholder | Value |
+|---|---|
+| `{location}` | The location name. |
+| `{when}` | The date and time, "all day", or "time unknown". |
+| `{old_when}` | The earlier time. Empty unless the outage changed. |
+| `{duration}` | The length, for example "2 h 30 min". Empty if unknown. |
+| `{station}` | The transformer station. |
+| `{text}` | The text of the notice. |
+| `{link}` | The link to the notice. |
+
+Example message: `{location}: {when} ({duration}), {station}`. This gives
+"Dom: 12 Nov 2026, 08:00–14:00 (6 h), TP lopata".
+
+The blueprint joins all white space into single spaces. The notice text comes
+from the feed, so the blueprint never runs it as a template. It puts each
+value in as plain text. A value that contains `{location}` stays as it is.
 
 ## Dashboard card
 
