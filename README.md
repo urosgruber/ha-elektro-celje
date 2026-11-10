@@ -88,7 +88,6 @@ a notification waits. It arrives when the quiet hours end.
 
 - The reminder never waits. You chose its time, so it arrives at that time,
   also during the quiet hours. It does not replace a waiting notification.
-
 - A notification about an outage that starts before the quiet hours end
   arrives at once.
 - A notification about an outage with an unknown start waits.
@@ -103,6 +102,14 @@ a notification waits. It arrives when the quiet hours end.
 
 The events of the integration never wait. Your own automations get them at
 once.
+
+### Delivery
+
+Each notification is sent at most once. The integration saves its state
+first, then it sends. If Home Assistant stops between the save and the send,
+that notification is lost. It is not sent again after the restart. The
+integration does not repeat a send that a phone did not accept. It writes a
+warning to the log instead.
 
 ### Switches
 
