@@ -58,6 +58,8 @@ in the feeds only while it has a planned outage. If your station is not in the
 list, type its name.
 
 The reminder time is an option of each location. The default is 18:00.
+The reminder ignores the quiet hours. It arrives at the reminder time that
+you choose.
 
 ## Notifications
 
@@ -83,6 +85,9 @@ Obvestila o izklopih**, select the location, and select **Configure**.
 
 Quiet hours are on by default, from 22:00 to 07:00. During the quiet hours,
 a notification waits. It arrives when the quiet hours end.
+
+- The reminder never waits. You chose its time, so it arrives at that time,
+  also during the quiet hours. It does not replace a waiting notification.
 
 - A notification about an outage that starts before the quiet hours end
   arrives at once.

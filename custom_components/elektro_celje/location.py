@@ -319,13 +319,15 @@ class LocationCoordinator(DataUpdateCoordinator[LocationData]):
         to_send: list[dict[str, Any]] = []
         for event in events:
             new = make_item(event.kind, event_payload(event, location, entry_id))
+            if event.kind == "reminder":
+                # The user chose the reminder time: it ignores the quiet hours.
+                # It never enters or replaces the hold queue.
+                if self.notify_enabled["reminder"]:
+                    to_send.append(new)
+                continue
             key = event.record.key
-            held = self._held.pop(key, None)
-            item = merge(held, new)
-            if item is not None and not self.notify_enabled[item["kind"]]:
-                # A reminder that is off must not discard a held alert.
-                item = held if new["kind"] == "reminder" else None
-            if item is None:
+            item = merge(self._held.pop(key, None), new)
+            if item is None or not self.notify_enabled[item["kind"]]:
                 continue
             # An outage that starts before the quiet hours end cannot wait.
             if quiet.quiet and not starts_before(item, quiet.end):

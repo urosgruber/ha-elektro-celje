@@ -60,7 +60,7 @@
         },
         "data_description": {
           "notify_targets": "Telefoni, ki dobijo obvestilo o izklopih te lokacije. Če seznam počistite, so obvestila izklopljena.",
-          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan.",
+          "reminder_time": "Ura v dnevu, ko integracija pošlje opomnik za izklop naslednji dan. Opomnik ne upošteva tihega časa: pride ob tej uri.",
           "quiet_hours": "Ponoči obvestila počakajo. Pridejo, ko se tihi čas konča. Obvestilo o izklopu, ki se začne pred koncem tihega časa, pride takoj. Dogodki nikoli ne čakajo.",
           "quiet_from": "Začetek tihega časa.",
           "quiet_to": "Konec tihega časa. Če je konec enak začetku, je tihi čas izklopljen."

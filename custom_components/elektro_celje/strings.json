@@ -60,7 +60,7 @@
         },
         "data_description": {
           "notify_targets": "The phones that get a notification about the outages of this location. Clear the list to turn the notifications off.",
-          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day.",
+          "reminder_time": "The time of day when the integration sends the reminder for an outage on the next day. The reminder ignores the quiet hours: it arrives at this time.",
           "quiet_hours": "At night the notifications wait. They arrive when the quiet hours end. A notification about an outage that starts before the end arrives at once. The events never wait.",
           "quiet_from": "The start of the quiet hours.",
           "quiet_to": "The end of the quiet hours. If the end is equal to the start, the quiet hours are off."

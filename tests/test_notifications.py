@@ -661,14 +661,14 @@ async def test_route_changed_after_detected_sends_detected_with_new_time(
     assert held["kind"] == "detected"
     assert held["payload"]["start"] == _local(11, 10).isoformat()
     assert "old_start" not in held["payload"]
-    # A reminder that is off keeps the held alert.
+    # A reminder ignores the quiet hours and leaves the held alert alone.
+    sent = coordinator._route([AlertEvent("reminder", later)], now)
+    assert [i["kind"] for i in sent] == ["reminder"]
+    assert coordinator._held["9:0"]["kind"] == "detected"
+    # A reminder that is off is not sent and does not touch the queue.
     coordinator.notify_enabled["reminder"] = False
     assert coordinator._route([AlertEvent("reminder", later)], now) == []
     assert coordinator._held["9:0"]["kind"] == "detected"
-    # A reminder that is on replaces the held alert.
-    coordinator.notify_enabled["reminder"] = True
-    assert coordinator._route([AlertEvent("reminder", later)], now) == []
-    assert coordinator._held["9:0"]["kind"] == "reminder"
     await _unload(hass, entry)
 
 
@@ -929,3 +929,20 @@ async def test_cleared_phones_stay_cleared_after_error(
     )
     key, _ = _field(result, CONF_NOTIFY_TARGETS)
     assert key.description["suggested_value"] == ["mobile_app_pixel"]
+
+
+async def test_reminder_inside_quiet_hours_is_sent_at_once(
+    hass, aioclient_mock, phones, freezer, ljubljana
+) -> None:
+    """The reminder at 22:30 falls in the quiet hours. It is sent anyway."""
+    freezer.move_to(_local(9, 17, 0))
+    aioclient_mock.get(VELENJE, text=_feed("velenje"))
+    hass.config.language = "en"
+    entry = _entry({**ON_PIXEL, CONF_REMINDER_TIME: "22:30:00"}, station="dobriša vas")
+    coordinator = await _setup(hass, entry)
+    assert len(phones["mobile_app_pixel"]) == 1  # detected, not quiet at 17:00
+    await _move(hass, freezer, _local(9, 22, 30))
+    titles = [c.data["title"] for c in phones["mobile_app_pixel"]]
+    assert titles == ["Planned power outage", "Power outage tomorrow"]
+    assert coordinator._held == {}
+    await _unload(hass, entry)
